@@ -80,6 +80,12 @@ function App() {
   const remoteAudioRef = useRef(null)
   const ringTimerRef = useRef(null)
   const vibrateTimerRef = useRef(null)
+  const toastTimerRef = useRef(null)
+  const bootstrapRef = useRef(null)
+  const searchUsersRef = useRef(null)
+  const apiRef = useRef(null)
+  const loadStatusesRef = useRef(null)
+  const startIncomingAlertRef = useRef(null)
   const callStateRef = useRef(callState)
   const activeConvIdRef = useRef(activeConvId)
   const messagesAreaRef = useRef(null)
@@ -90,133 +96,10 @@ function App() {
   )
   const activeMessages = messagesByConv[activeConvId] || []
 
-  useEffect(() => {
-    writeStorage('letta_token', token)
-  }, [token])
-
-  useEffect(() => {
-    writeStorage('letta_refresh', refreshToken)
-  }, [refreshToken])
-
-  useEffect(() => {
-    callStateRef.current = callState
-  }, [callState])
-
-  useEffect(() => {
-    activeConvIdRef.current = activeConvId
-  }, [activeConvId])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined
-
-    const mediaQuery = window.matchMedia(MOBILE_BREAKPOINT_QUERY)
-    const onViewportChange = (event) => {
-      setIsMobileViewport(event.matches)
-      setIsSidebarOpen(!event.matches)
-    }
-
-    setIsMobileViewport(mediaQuery.matches)
-    setIsSidebarOpen(!mediaQuery.matches)
-    mediaQuery.addEventListener('change', onViewportChange)
-
-    return () => {
-      mediaQuery.removeEventListener('change', onViewportChange)
-    }
-  }, [])
-
-  useEffect(() => {
-    const el = messagesAreaRef.current
-    if (!el || !activeConvId) return
-    el.scrollTop = el.scrollHeight
-  }, [activeConvId, activeMessages.length])
-
-  useEffect(() => {
-    if (!token) return
-    void bootstrap()
-    return () => closeWebSocket()
-  }, [token])
-
-  useEffect(() => {
-    if (!showNewConv || userSearch.trim().length < 2) {
-      setUserResults([])
-      return undefined
-    }
-    const id = setTimeout(() => {
-      void searchUsers(userSearch)
-    }, 250)
-    return () => clearTimeout(id)
-  }, [showNewConv, userSearch])
-
-  useEffect(() => {
-    if (!groupUserSearch.trim() || groupUserSearch.trim().length < 2) {
-      setGroupUserResults([])
-      return undefined
-    }
-    const id = setTimeout(async () => {
-      try {
-        const data = await api(`/users/search?q=${encodeURIComponent(groupUserSearch)}&limit=8`)
-        setGroupUserResults(data)
-      } catch {
-        setGroupUserResults([])
-      }
-    }, 250)
-    return () => clearTimeout(id)
-  }, [groupUserSearch])
-
-  useEffect(() => {
-    if (leftTab !== 'status') return
-    void loadStatuses()
-  }, [leftTab])
-
-  useEffect(() => {
-    setGroupNameDraft(activeConversation?.name || '')
-    setMemberToAdd(null)
-    setGroupUserSearch('')
-    setGroupUserResults([])
-  }, [activeConversation?.id])
-
-  useEffect(() => {
-    remoteAudioRef.current = new Audio()
-    remoteAudioRef.current.autoplay = true
-    return () => {
-      teardownCall()
-    }
-  }, [])
-
-  useEffect(() => {
-    async function refreshDevices() {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        const outputs = devices.filter((d) => d.kind === 'audiooutput')
-        setAudioOutputs(outputs)
-      } catch {
-        setAudioOutputs([])
-      }
-    }
-
-    void refreshDevices()
-    navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices)
-    return () => {
-      navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (callState.status !== 'ringing') {
-      stopIncomingAlert()
-      return
-    }
-
-    startIncomingAlert()
-    return () => {
-      stopIncomingAlert()
-    }
-  }, [callState.status])
-
   function pushToast(message, type = '') {
     setToast({ message, type })
-    window.clearTimeout(window.__toastTimer)
-    window.__toastTimer = window.setTimeout(() => setToast(null), 3500)
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 3500)
   }
 
   function clearSession() {
@@ -784,7 +667,12 @@ function App() {
   }
 
   async function openConversation(conversationId) {
+    const selectedConversation = conversations.find((c) => c.id === conversationId)
     setActiveConvId(conversationId)
+    setGroupNameDraft(selectedConversation?.name || '')
+    setMemberToAdd(null)
+    setGroupUserSearch('')
+    setGroupUserResults([])
     if (isMobileViewport) setIsSidebarOpen(false)
     try {
       const [list] = await Promise.all([loadMessages(conversationId), loadPins(conversationId), loadConversationDetail(conversationId)])
@@ -1169,6 +1057,128 @@ function App() {
     teardownCall()
   }
 
+  useEffect(() => {
+    bootstrapRef.current = bootstrap
+    searchUsersRef.current = searchUsers
+    apiRef.current = api
+    loadStatusesRef.current = loadStatuses
+    startIncomingAlertRef.current = startIncomingAlert
+  })
+
+  useEffect(() => {
+    writeStorage('letta_token', token)
+  }, [token])
+
+  useEffect(() => {
+    writeStorage('letta_refresh', refreshToken)
+  }, [refreshToken])
+
+  useEffect(() => {
+    callStateRef.current = callState
+  }, [callState])
+
+  useEffect(() => {
+    activeConvIdRef.current = activeConvId
+  }, [activeConvId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const mediaQuery = window.matchMedia(MOBILE_BREAKPOINT_QUERY)
+    const onViewportChange = (event) => {
+      setIsMobileViewport(event.matches)
+      setIsSidebarOpen(!event.matches)
+    }
+
+    mediaQuery.addEventListener('change', onViewportChange)
+
+    return () => {
+      mediaQuery.removeEventListener('change', onViewportChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    const el = messagesAreaRef.current
+    if (!el || !activeConvId) return
+    el.scrollTop = el.scrollHeight
+  }, [activeConvId, activeMessages.length])
+
+  useEffect(() => {
+    if (!token) return
+    const id = window.setTimeout(() => {
+      void bootstrapRef.current?.()
+    }, 0)
+    return () => {
+      window.clearTimeout(id)
+      closeWebSocket()
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (!showNewConv || userSearch.trim().length < 2) return undefined
+    const id = setTimeout(() => {
+      void searchUsersRef.current?.(userSearch)
+    }, 250)
+    return () => clearTimeout(id)
+  }, [showNewConv, userSearch])
+
+  useEffect(() => {
+    if (!groupUserSearch.trim() || groupUserSearch.trim().length < 2) return undefined
+    const id = setTimeout(async () => {
+      try {
+        const data = await apiRef.current(`/users/search?q=${encodeURIComponent(groupUserSearch)}&limit=8`)
+        setGroupUserResults(data)
+      } catch {
+        setGroupUserResults([])
+      }
+    }, 250)
+    return () => clearTimeout(id)
+  }, [groupUserSearch])
+
+  useEffect(() => {
+    if (leftTab !== 'status') return
+    void loadStatusesRef.current?.()
+  }, [leftTab])
+
+  useEffect(() => {
+    remoteAudioRef.current = new Audio()
+    remoteAudioRef.current.autoplay = true
+    return () => {
+      teardownCall()
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    async function refreshDevices() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const outputs = devices.filter((d) => d.kind === 'audiooutput')
+        setAudioOutputs(outputs)
+      } catch {
+        setAudioOutputs([])
+      }
+    }
+
+    void refreshDevices()
+    navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices)
+    return () => {
+      navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (callState.status !== 'ringing') {
+      stopIncomingAlert()
+      return
+    }
+
+    startIncomingAlertRef.current?.()
+    return () => {
+      stopIncomingAlert()
+    }
+  }, [callState.status])
+
   const filteredConversations = useMemo(() => {
     return conversations.filter((c) => {
       const title = c.type === 'group'
@@ -1177,6 +1187,9 @@ function App() {
       return title.toLowerCase().includes(searchConversations.toLowerCase())
     })
   }, [conversations, searchConversations, me])
+
+  const visibleUserResults = showNewConv && userSearch.trim().length >= 2 ? userResults : []
+  const visibleGroupUserResults = groupUserSearch.trim().length >= 2 ? groupUserResults : []
 
   if (!token) {
     return (
@@ -1436,7 +1449,7 @@ function App() {
               />
               <select className="modal-input" value={memberToAdd || ''} onChange={(e) => setMemberToAdd(e.target.value || null)}>
                 <option value="">Select user</option>
-                {groupUserResults
+                {visibleGroupUserResults
                   .filter((u) => !activeConversation.members?.some((m) => m.user_id === u.id))
                   .map((u) => (
                     <option key={u.id} value={u.id}>{u.display_name}</option>
@@ -1613,7 +1626,7 @@ function App() {
                 placeholder="Search user"
               />
               <div className="search-results">
-                {userResults.map((user) => (
+                {visibleUserResults.map((user) => (
                   <button
                     key={user.id}
                     className={`search-result-item ${selectedUserId === user.id ? 'selected' : ''}`}

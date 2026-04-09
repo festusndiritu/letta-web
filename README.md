@@ -20,7 +20,7 @@ Single-page chat client built with React + Vite.
 
 ## Scripts
 
-- `npm run dev`: start Vite dev server
-- `npm run build`: production build
-- `npm run lint`: run ESLint
-- `npm run preview`: preview production build
+- `bun run dev`: start Vite dev server
+- `bun run build`: production build
+- `bun run lint`: run ESLint
+- `bun run preview`: preview production build
