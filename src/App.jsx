@@ -15,6 +15,7 @@ function App() {
   const [displayName, setDisplayName] = useState('')
   const [authStep, setAuthStep] = useState('phone')
   const [authError, setAuthError] = useState('')
+  const [authLoading, setAuthLoading] = useState('')
 
   const [me, setMe] = useState(null)
   const [conversations, setConversations] = useState([])
@@ -64,10 +65,7 @@ function App() {
     localReady: false,
     remoteReady: false,
     peerUserId: null,
-    muted: false,
-    outputDeviceId: 'default',
   })
-  const [audioOutputs, setAudioOutputs] = useState([])
 
   const wsRef = useRef(null)
   const wsReconnectRef = useRef(null)
@@ -95,6 +93,10 @@ function App() {
     [conversations, activeConvId],
   )
   const activeMessages = messagesByConv[activeConvId] || []
+  const activePeerId = useMemo(
+    () => activeConversation?.members?.find((m) => m.user_id !== me?.id)?.user_id || null,
+    [activeConversation, me?.id],
+  )
 
   function pushToast(message, type = '') {
     setToast({ message, type })
@@ -564,6 +566,7 @@ function App() {
 
   async function requestOtp() {
     setAuthError('')
+    setAuthLoading('request')
     try {
       await api('/auth/request-otp', {
         method: 'POST',
@@ -572,11 +575,14 @@ function App() {
       setAuthStep('otp')
     } catch (err) {
       setAuthError(err.message)
+    } finally {
+      setAuthLoading('')
     }
   }
 
   async function verifyOtp() {
     setAuthError('')
+    setAuthLoading('verify')
     try {
       const data = await api('/auth/verify-otp', {
         method: 'POST',
@@ -591,11 +597,14 @@ function App() {
       }
     } catch (err) {
       setAuthError(err.message)
+    } finally {
+      setAuthLoading('')
     }
   }
 
   async function completeProfile() {
     setAuthError('')
+    setAuthLoading('profile')
     try {
       const data = await api('/auth/complete-profile', {
         method: 'POST',
@@ -609,6 +618,8 @@ function App() {
       setRefreshToken(data.refresh_token)
     } catch (err) {
       setAuthError(err.message)
+    } finally {
+      setAuthLoading('')
     }
   }
 
@@ -619,14 +630,6 @@ function App() {
     })
     setMe(updated)
     return updated
-  }
-
-  async function registerPushToken(fcmToken) {
-    await api('/auth/users/me/push-token', {
-      method: 'POST',
-      body: JSON.stringify({ fcm_token: fcmToken }),
-    })
-    pushToast('Push token registered', 'success')
   }
 
   async function loadMessages(conversationId) {
@@ -853,30 +856,6 @@ function App() {
     }
   }
 
-  async function muteConversation(duration) {
-    if (!activeConvId) return
-    await api(`/conversations/${activeConvId}/mute`, {
-      method: 'POST',
-      body: JSON.stringify({ duration }),
-    })
-    pushToast(`Muted for ${duration}`, 'success')
-  }
-
-  async function clearMuteConversation() {
-    if (!activeConvId) return
-    await api(`/conversations/${activeConvId}/mute`, { method: 'DELETE' })
-    pushToast('Mute cleared', 'success')
-  }
-
-  async function setDisappear(seconds) {
-    if (!activeConvId) return
-    await api(`/conversations/${activeConvId}/disappear`, {
-      method: 'PATCH',
-      body: JSON.stringify({ seconds }),
-    })
-    pushToast('Disappear timer updated', 'success')
-  }
-
   async function loadStatuses() {
     try {
       const [feed, mine] = await Promise.all([api('/statuses/feed'), api('/statuses/mine')])
@@ -959,15 +938,6 @@ function App() {
     }
   }
 
-  async function fetchPreview(url) {
-    try {
-      const data = await api(`/meta/preview?url=${encodeURIComponent(url)}`)
-      pushToast(data?.title ? `Preview: ${data.title}` : 'Preview fetched', 'success')
-    } catch (err) {
-      pushToast(err.message, 'error')
-    }
-  }
-
   async function startCall(calleeId) {
     if (!activeConvId || !calleeId) return
     const callId = crypto.randomUUID()
@@ -1024,31 +994,6 @@ function App() {
     if (!callState.callId) return
     sendWs('call.reject', { call_id: callState.callId })
     teardownCall()
-  }
-
-  function toggleMute() {
-    const stream = localStreamRef.current
-    if (!stream) return
-    const nextMuted = !callStateRef.current.muted
-    stream.getAudioTracks().forEach((track) => {
-      track.enabled = !nextMuted
-    })
-    setCallState((prev) => ({ ...prev, muted: nextMuted }))
-  }
-
-  async function setOutputDevice(deviceId) {
-    setCallState((prev) => ({ ...prev, outputDeviceId: deviceId }))
-    const audio = remoteAudioRef.current
-    if (!audio) return
-    if (typeof audio.setSinkId !== 'function') {
-      pushToast('Audio output switching is not supported in this browser', 'error')
-      return
-    }
-    try {
-      await audio.setSinkId(deviceId)
-    } catch (err) {
-      pushToast(err.message || 'Could not switch output device', 'error')
-    }
   }
 
   function endCall() {
@@ -1150,24 +1095,6 @@ function App() {
   }, [])
 
   useEffect(() => {
-    async function refreshDevices() {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        const outputs = devices.filter((d) => d.kind === 'audiooutput')
-        setAudioOutputs(outputs)
-      } catch {
-        setAudioOutputs([])
-      }
-    }
-
-    void refreshDevices()
-    navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices)
-    return () => {
-      navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices)
-    }
-  }, [])
-
-  useEffect(() => {
     if (callState.status !== 'ringing') {
       stopIncomingAlert()
       return
@@ -1207,8 +1134,8 @@ function App() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
               />
-              <button className="auth-btn" onClick={() => void requestOtp()}>
-                Send code
+              <button className="auth-btn" disabled={authLoading === 'request'} onClick={() => void requestOtp()}>
+                {authLoading === 'request' ? 'Sending...' : 'Send code'}
               </button>
             </>
           )}
@@ -1222,8 +1149,8 @@ function App() {
                 value={otp}
                 onChange={(e) => setOtp(e.target.value)}
               />
-              <button className="auth-btn" onClick={() => void verifyOtp()}>
-                Verify
+              <button className="auth-btn" disabled={authLoading === 'verify'} onClick={() => void verifyOtp()}>
+                {authLoading === 'verify' ? 'Verifying...' : 'Verify'}
               </button>
               <button className="auth-back" onClick={() => setAuthStep('phone')}>
                 Back
@@ -1240,8 +1167,8 @@ function App() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
               />
-              <button className="auth-btn" onClick={() => void completeProfile()}>
-                Complete profile
+              <button className="auth-btn" disabled={authLoading === 'profile'} onClick={() => void completeProfile()}>
+                {authLoading === 'profile' ? 'Completing...' : 'Complete profile'}
               </button>
             </>
           )}
@@ -1379,11 +1306,6 @@ function App() {
               <option value="off">off</option>
             </select>
 
-            <h3>Push token</h3>
-            <input className="modal-input" placeholder="fcm token" onKeyDown={(e) => {
-              if (e.key === 'Enter') void registerPushToken(e.currentTarget.value.trim())
-            }} />
-
             <button className="auth-back" onClick={() => clearSession()}>Sign out</button>
           </div>
         )}
@@ -1424,10 +1346,12 @@ function App() {
               </div>
             </div>
             <div className="chat-header-actions">
-              <button className="icon-btn" onClick={() => void muteConversation('1h')}>Mute 1h</button>
-              <button className="icon-btn" onClick={() => void clearMuteConversation()}>Unmute</button>
-              <button className="icon-btn" onClick={() => void setDisappear(3600)}>Disappear 1h</button>
-              <button className="icon-btn" onClick={() => void setDisappear(null)}>Off</button>
+              {!callState.active ? (
+                <button className="icon-btn" disabled={!activePeerId} onClick={() => void startCall(activePeerId)}>Call</button>
+              ) : (
+                <button className="icon-btn" onClick={endCall}>End call</button>
+              )}
+              <span className="call-state">{callState.status}</span>
             </div>
           </div>
 
@@ -1561,35 +1485,6 @@ function App() {
               )}
             </div>
             <button className="send-btn" onClick={() => void sendMessage()}>➤</button>
-          </div>
-
-          <div className="tools-strip">
-            <input
-              className="modal-input"
-              placeholder="Paste URL and press Enter for /meta/preview"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void fetchPreview(e.currentTarget.value.trim())
-              }}
-            />
-            <button className="icon-btn" onClick={() => void startCall(activeConversation.members?.find((m) => m.user_id !== me?.id)?.user_id)}>Call</button>
-            <button className="icon-btn" onClick={answerCall} disabled={!callState.incoming}>Answer</button>
-            <button className="icon-btn" onClick={rejectCall} disabled={!callState.incoming}>Reject</button>
-            <button className="icon-btn" onClick={endCall} disabled={!callState.active}>End</button>
-            <button className="icon-btn" onClick={toggleMute} disabled={!callState.active}>{callState.muted ? 'Unmute' : 'Mute'}</button>
-            <select
-              className="modal-input output-select"
-              value={callState.outputDeviceId}
-              onChange={(e) => void setOutputDevice(e.target.value)}
-              disabled={!callState.active}
-            >
-              <option value="default">Default output</option>
-              {audioOutputs.map((device) => (
-                <option key={device.deviceId} value={device.deviceId}>
-                  {device.label || `Speaker ${device.deviceId.slice(0, 6)}`}
-                </option>
-              ))}
-            </select>
-            <span className="call-state">Call: {callState.status}</span>
           </div>
         </main>
       )}
