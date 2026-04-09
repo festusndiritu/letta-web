@@ -1,53 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import './App.css'
+import { API, EMOJIS, RTC_CONFIG, WS_BASE } from './config/chat'
+import './styles/app.css'
+import { formatDate, formatTime, initials } from './utils/formatters'
+import { readStorage, writeStorage } from './utils/storage'
 
-const API = 'https://api.letta.mizzenmast.dev'
-const WS_BASE = 'wss://api.letta.mizzenmast.dev/ws'
-const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '👎']
-const RTC_CONFIG = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-}
-
-function readStorage(key, fallback = null) {
-  try {
-    const value = localStorage.getItem(key)
-    return value ?? fallback
-  } catch {
-    return fallback
-  }
-}
-
-function writeStorage(key, value) {
-  try {
-    if (value == null) localStorage.removeItem(key)
-    else localStorage.setItem(key, value)
-  } catch {
-    // no-op for environments without localStorage
-  }
-}
-
-function formatTime(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  return d.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
-}
-
-function formatDate(iso) {
-  if (!iso) return ''
-  return new Date(iso).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  })
-}
-
-function initials(name) {
-  return (name || '?').trim().slice(0, 1).toUpperCase()
-}
+const MOBILE_BREAKPOINT_QUERY = '(max-width: 980px)'
 
 function App() {
   const [token, setToken] = useState(() => readStorage('letta_token'))
@@ -87,6 +44,14 @@ function App() {
   const [statusText, setStatusText] = useState('')
   const [statusColor, setStatusColor] = useState('#1e1e21')
   const [leftTab, setLeftTab] = useState('chats')
+  const [isMobileViewport, setIsMobileViewport] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.matchMedia(MOBILE_BREAKPOINT_QUERY).matches
+  })
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return !window.matchMedia(MOBILE_BREAKPOINT_QUERY).matches
+  })
 
   const [focusProfile, setFocusProfile] = useState('normal')
   const [wsState, setWsState] = useState('offline')
@@ -117,6 +82,7 @@ function App() {
   const vibrateTimerRef = useRef(null)
   const callStateRef = useRef(callState)
   const activeConvIdRef = useRef(activeConvId)
+  const messagesAreaRef = useRef(null)
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeConvId) || null,
@@ -139,6 +105,30 @@ function App() {
   useEffect(() => {
     activeConvIdRef.current = activeConvId
   }, [activeConvId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const mediaQuery = window.matchMedia(MOBILE_BREAKPOINT_QUERY)
+    const onViewportChange = (event) => {
+      setIsMobileViewport(event.matches)
+      setIsSidebarOpen(!event.matches)
+    }
+
+    setIsMobileViewport(mediaQuery.matches)
+    setIsSidebarOpen(!mediaQuery.matches)
+    mediaQuery.addEventListener('change', onViewportChange)
+
+    return () => {
+      mediaQuery.removeEventListener('change', onViewportChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    const el = messagesAreaRef.current
+    if (!el || !activeConvId) return
+    el.scrollTop = el.scrollHeight
+  }, [activeConvId, activeMessages.length])
 
   useEffect(() => {
     if (!token) return
@@ -795,6 +785,7 @@ function App() {
 
   async function openConversation(conversationId) {
     setActiveConvId(conversationId)
+    if (isMobileViewport) setIsSidebarOpen(false)
     try {
       const [list] = await Promise.all([loadMessages(conversationId), loadPins(conversationId), loadConversationDetail(conversationId)])
       const last = list[list.length - 1]
@@ -1249,11 +1240,16 @@ function App() {
   }
 
   return (
-    <div id="app" className="active">
-      <aside className="sidebar">
+    <div id="app" className={`${isMobileViewport ? 'mobile-app' : 'desktop-app'} ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+      <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <div className="sidebar-logo">Letta</div>
           <div className="sidebar-actions">
+            {isMobileViewport && activeConversation && (
+              <button className="icon-btn" onClick={() => setIsSidebarOpen(false)} title="Close chats">
+                ←
+              </button>
+            )}
             <div className={`ws-indicator ${wsState === 'connected' ? 'connected' : wsState === 'connecting' ? 'connecting' : ''}`} />
             <button className="icon-btn" onClick={() => setShowNewConv(true)} title="New conversation">
               ✏️
@@ -1393,10 +1389,20 @@ function App() {
           <div className="empty-icon">💬</div>
           <div className="empty-title">Pick a conversation</div>
           <div className="empty-sub">Choose from the sidebar or start a new thread.</div>
+          {isMobileViewport && !isSidebarOpen && (
+            <button className="auth-btn" onClick={() => setIsSidebarOpen(true)}>
+              Open chats
+            </button>
+          )}
         </main>
       ) : (
         <main className="chat-pane">
           <div className="chat-header">
+            {isMobileViewport && (
+              <button className="icon-btn" onClick={() => setIsSidebarOpen(true)} title="Open chats">
+                ←
+              </button>
+            )}
             <div className="avatar small">{initials(activeConversation.name || activeConversation.members?.[0]?.display_name)}</div>
             <div className="chat-main-title">
               <div className="chat-name">{activeConversation.type === 'group' ? (activeConversation.name || 'Group') : (activeConversation.members?.find((m) => m.user_id !== me?.id)?.display_name || 'Unknown')}</div>
@@ -1461,7 +1467,7 @@ function App() {
             </div>
           )}
 
-          <div className="messages-area">
+          <div className="messages-area" ref={messagesAreaRef}>
             {activeMessages.map((msg, idx) => {
               const mine = msg.sender_id === me?.id
               const previous = activeMessages[idx - 1]

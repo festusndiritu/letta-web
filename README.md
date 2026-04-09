@@ -1,16 +1,26 @@
-# React + Vite
+# Letta Web Client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Single-page chat client built with React + Vite.
 
-Currently, two official plugins are available:
+## Codebase Layout
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- `src/App.jsx`: app shell, chat workflows, websocket lifecycle, and feature wiring
+- `src/config/chat.js`: environment-agnostic chat constants (API/WS endpoints, emoji list, RTC config)
+- `src/utils/storage.js`: local storage helpers
+- `src/utils/formatters.js`: date/time and avatar formatting helpers
+- `src/styles/base.css`: root document sizing
+- `src/styles/app.css`: full visual system and responsive layout rules
 
-## React Compiler
+## UX Layout Rules Implemented
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Desktop: two-column shell with conversation sidebar + active conversation pane
+- Mobile: slide-in sidebar drawer and full-screen chat pane
+- Sticky composer: message input remains visible at the bottom while scrolling messages
+- Scrollable regions: sidebar list and messages each keep independent scrolling
 
-## Expanding the ESLint configuration
+## Scripts
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `npm run dev`: start Vite dev server
+- `npm run build`: production build
+- `npm run lint`: run ESLint
+- `npm run preview`: preview production build

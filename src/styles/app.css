@@ -25,6 +25,7 @@ body {
   color: var(--text);
   font-family: "DM Sans", "Segoe UI", sans-serif;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 button,
@@ -35,8 +36,10 @@ select {
 }
 
 #app {
-  display: flex;
-  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  height: 100vh;
+  overflow: hidden;
 }
 
 #auth-screen {
@@ -113,11 +116,13 @@ select {
 }
 
 .sidebar {
-  width: min(360px, 94vw);
   border-right: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg2) 92%, transparent);
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .sidebar-header,
@@ -191,6 +196,7 @@ select {
 
 .conv-list {
   overflow: auto;
+  min-height: 0;
 }
 
 .conv-item {
@@ -280,6 +286,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
 }
 
 .status-list {
@@ -321,6 +328,8 @@ select {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  height: 100vh;
 }
 
 .chat-header,
@@ -338,6 +347,10 @@ select {
 
 .group-admin-bar {
   flex-wrap: wrap;
+}
+
+.chat-header {
+  border-bottom: 1px solid var(--border);
 }
 
 .member-pills {
@@ -370,6 +383,18 @@ select {
   border-bottom: 0;
 }
 
+.tools-strip {
+  flex-wrap: wrap;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-input-area {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+}
+
 .chat-main-title {
   flex: 1;
 }
@@ -377,10 +402,11 @@ select {
 .messages-area {
   flex: 1;
   overflow: auto;
-  padding: 14px;
+  padding: 14px 14px 20px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
 }
 
 .date-divider {
@@ -390,7 +416,7 @@ select {
 }
 
 .msg-row {
-  max-width: 75%;
+  max-width: min(78%, 760px);
 }
 
 .msg-row.me {
@@ -436,6 +462,13 @@ select {
 
 .input-wrap {
   flex: 1;
+  min-width: 0;
+}
+
+.chat-textarea {
+  resize: none;
+  min-height: 44px;
+  max-height: 140px;
 }
 
 .poll-editor {
@@ -514,6 +547,7 @@ select {
   position: fixed;
   right: 18px;
   bottom: 18px;
+  z-index: 500;
 }
 
 .toast {
@@ -607,6 +641,38 @@ select {
   animation: pulse 1s infinite;
 }
 
+.mobile-app .sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(88vw, 360px);
+  max-width: 360px;
+  transform: translateX(-100%);
+  transition: transform 220ms ease;
+  z-index: 50;
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+}
+
+.mobile-app.sidebar-open .sidebar {
+  transform: translateX(0);
+  box-shadow: 24px 0 48px rgba(0, 0, 0, 0.45);
+}
+
+.mobile-app.sidebar-open::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 40;
+  pointer-events: none;
+}
+
+.mobile-app .chat-pane,
+.mobile-app .empty-state {
+  grid-column: 1 / -1;
+}
+
 @keyframes pulse {
   0%,
   100% {
@@ -619,15 +685,43 @@ select {
 
 @media (max-width: 980px) {
   #app {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
-  .sidebar {
-    width: 100%;
-    max-height: 50vh;
+  body {
+    overflow: auto;
+  }
+
+  .chat-header,
+  .chat-input-area,
+  .tools-strip,
+  .pins-bar,
+  .group-admin-bar {
+    padding: 10px 12px;
+  }
+
+  .chat-pane,
+  .empty-state {
+    height: 100vh;
   }
 
   .msg-row {
     max-width: 95%;
+  }
+
+  .chat-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .chat-input-area {
+    align-items: flex-end;
+  }
+
+  .attach-btn,
+  .send-btn {
+    width: 40px;
+    height: 40px;
   }
 }
