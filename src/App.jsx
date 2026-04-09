@@ -38,6 +38,7 @@ function App() {
   const [memberToAdd, setMemberToAdd] = useState(null)
   const [groupUserSearch, setGroupUserSearch] = useState('')
   const [groupUserResults, setGroupUserResults] = useState([])
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false)
 
   const [pins, setPins] = useState([])
   const [statusesFeed, setStatusesFeed] = useState([])
@@ -87,6 +88,7 @@ function App() {
   const callStateRef = useRef(callState)
   const activeConvIdRef = useRef(activeConvId)
   const messagesAreaRef = useRef(null)
+  const headerMenuRef = useRef(null)
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeConvId) || null,
@@ -676,6 +678,7 @@ function App() {
     setMemberToAdd(null)
     setGroupUserSearch('')
     setGroupUserResults([])
+    setShowHeaderMenu(false)
     if (isMobileViewport) setIsSidebarOpen(false)
     try {
       const [list] = await Promise.all([loadMessages(conversationId), loadPins(conversationId), loadConversationDetail(conversationId)])
@@ -853,6 +856,43 @@ function App() {
       })
     } catch (err) {
       pushToast(err.message, 'error')
+    }
+  }
+
+  async function muteConversation(duration) {
+    if (!activeConvId) return
+    await api(`/conversations/${activeConvId}/mute`, {
+      method: 'POST',
+      body: JSON.stringify({ duration }),
+    })
+    pushToast(`Muted for ${duration}`, 'success')
+  }
+
+  async function clearMuteConversation() {
+    if (!activeConvId) return
+    await api(`/conversations/${activeConvId}/mute`, { method: 'DELETE' })
+    pushToast('Mute cleared', 'success')
+  }
+
+  async function setDisappear(seconds) {
+    if (!activeConvId) return
+    await api(`/conversations/${activeConvId}/disappear`, {
+      method: 'PATCH',
+      body: JSON.stringify({ seconds }),
+    })
+    pushToast('Disappear timer updated', 'success')
+  }
+
+  async function blockActivePeer() {
+    if (!activePeerId) return
+    try {
+      await api('/users/me/blocks', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: activePeerId }),
+      })
+      pushToast('User blocked', 'success')
+    } catch (err) {
+      pushToast(err.message || 'Could not block user', 'error')
     }
   }
 
@@ -1106,6 +1146,21 @@ function App() {
     }
   }, [callState.status])
 
+  useEffect(() => {
+    if (!showHeaderMenu) return undefined
+
+    const onPointerDown = (event) => {
+      if (!headerMenuRef.current?.contains(event.target)) {
+        setShowHeaderMenu(false)
+      }
+    }
+
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [showHeaderMenu])
+
   const filteredConversations = useMemo(() => {
     return conversations.filter((c) => {
       const title = c.type === 'group'
@@ -1347,11 +1402,60 @@ function App() {
             </div>
             <div className="chat-header-actions">
               {!callState.active ? (
-                <button className="icon-btn" disabled={!activePeerId} onClick={() => void startCall(activePeerId)}>Call</button>
+                <button className="icon-btn icon-only" disabled={!activePeerId} onClick={() => void startCall(activePeerId)} title="Start call">
+                  📞
+                </button>
               ) : (
-                <button className="icon-btn" onClick={endCall}>End call</button>
+                <button className="icon-btn icon-only" onClick={endCall} title="End call">
+                  📵
+                </button>
               )}
               <span className="call-state">{callState.status}</span>
+              <div className="header-menu-wrap" ref={headerMenuRef}>
+                <button
+                  className="icon-btn icon-only"
+                  title="More actions"
+                  onClick={() => setShowHeaderMenu((prev) => !prev)}
+                >
+                  ⋯
+                </button>
+                {showHeaderMenu && (
+                  <div className="header-menu">
+                    <button className="header-menu-item" onClick={() => {
+                      void muteConversation('1h')
+                      setShowHeaderMenu(false)
+                    }}>
+                      🔕 Mute 1h
+                    </button>
+                    <button className="header-menu-item" onClick={() => {
+                      void clearMuteConversation()
+                      setShowHeaderMenu(false)
+                    }}>
+                      🔔 Unmute
+                    </button>
+                    <button className="header-menu-item" onClick={() => {
+                      void setDisappear(3600)
+                      setShowHeaderMenu(false)
+                    }}>
+                      ⏱ Disappearing 1h
+                    </button>
+                    <button className="header-menu-item" onClick={() => {
+                      void setDisappear(null)
+                      setShowHeaderMenu(false)
+                    }}>
+                      ♾ Disappearing off
+                    </button>
+                    {activeConversation.type !== 'group' && (
+                      <button className="header-menu-item danger" onClick={() => {
+                        void blockActivePeer()
+                        setShowHeaderMenu(false)
+                      }}>
+                        🚫 Block user
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
