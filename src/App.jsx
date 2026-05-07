@@ -147,6 +147,7 @@ export default function App() {
   const [reactionPickerPos, setReactionPickerPos] = useState({ x: 0, y: 0 })
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [toast, setToast] = useState(null)
+  const [tabBar, setTabBar] = useState(null) // for mobile bottom tab bar state
 
   // WS
   const [wsState, setWsState] = useState('offline') // offline | connecting | connected
@@ -154,11 +155,13 @@ export default function App() {
   const [presenceMap, setPresenceMap] = useState({}) // userId -> {online, last_seen}
 
   // Status
-  const [statusFeed, setStatusFeed] = useState([]) // list[UserStatusGroup]
+  const [statusFeed, setStatusFeed] = useState([]) // list[{user_id, display_name, avatar, all_viewed, statuses[]}]
   const [statusMine, setStatusMine] = useState([])
   const [statusText, setStatusText] = useState('')
   const [statusColor, setStatusColor] = useState('#1e1e21')
-  const [expandedStatus, setExpandedStatus] = useState(null) // userId whose statuses are expanded
+  const [storyViewerId, setStoryViewerId] = useState(null) // userId of story being viewed
+  const [storyViewerIndex, setStoryViewerIndex] = useState(0) // index in stories array
+  const [storyAutoAdvance, setStoryAutoAdvance] = useState(null) // timer ref
 
   // Calls history
   const [callsFeed, setCallsFeed] = useState([])
@@ -946,20 +949,17 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-top">
           <span className="sidebar-wordmark">Letta</span>
-          <div className="sidebar-top-right">
-            <div className={`ws-dot ${wsState}`} title={wsState} />
-            <button className={`icon-btn ${workspace === 'status' ? 'active' : ''}`} onClick={() => setWorkspace('status')} title="Statuses"><StatusIcon /></button>
-            <button className={`icon-btn ${workspace === 'calls' ? 'active' : ''}`} onClick={() => setWorkspace('calls')} title="Calls"><CallsIcon /></button>
-            <button className={`icon-btn ${workspace === 'settings' ? 'active' : ''}`} onClick={() => setWorkspace('settings')} title="Settings"><SettingsIcon /></button>
-            <button className={`icon-btn primary ${showNewConv ? 'active' : ''}`} onClick={() => { setWorkspace('chats'); setShowNewConv(p => !p) }} title="New chat"><AddChatIcon /></button>
-          </div>
+          <div className="ws-dot" title={`${wsState}`} style={{ background: wsState === 'connected' ? '#4ade80' : wsState === 'connecting' ? '#fbbf24' : '#ef4444' }} />
         </div>
 
         <div className="sidebar-main">
-          <div className="sidebar-search">
-            <input value={convSearch} onChange={e => setConvSearch(e.target.value)} placeholder="Search conversations…" />
-          </div>
+          {workspace === 'chats' && (
+            <div className="sidebar-search">
+              <input value={convSearch} onChange={e => setConvSearch(e.target.value)} placeholder="Search conversations…" />
+            </div>
+          )}
 
+          {workspace === 'chats' && (
           <div className="conv-list">
             {filteredConvs.length === 0 && (
               <div className="empty-convs">No conversations yet.<br />Start one with the new chat button above.</div>
@@ -992,33 +992,66 @@ export default function App() {
               )
             })}
           </div>
+          )}
 
-            <div className="status-rail">
-            <button className="status-rail-item my-status" onClick={() => setWorkspace('status')}>
-              <div className="status-rail-avatar mine">{initial(me?.display_name)}</div>
-              <div className="status-rail-copy">
-                <div className="status-rail-title">My status</div>
-                <div className="status-rail-sub">{statusMine.length ? `${statusMine.length} update${statusMine.length !== 1 ? 's' : ''}` : 'Post an update'}</div>
+          {workspace === 'status' && (
+            <div className="status-sidebar">
+              <div className="sidebar-search">
+                <input placeholder="Search statuses…" />
               </div>
-            </button>
-            <div className="status-rail-list">
-              {statusPreview.length === 0 ? (
-                <button className="status-rail-empty" onClick={() => setWorkspace('status')}>No updates yet</button>
-              ) : statusPreview.map(group => (
-                <button key={group.user_id} className="status-rail-item" onClick={() => { setWorkspace('status'); setExpandedStatus(group.user_id) }}>
-                  <div className={`status-rail-avatar ${group.all_viewed ? 'viewed' : 'new'}`}>
-                    {initial(group.display_name)}
-                  </div>
-                  <div className="status-rail-copy">
-                    <div className="status-rail-title">{group.display_name}</div>
-                    <div className="status-rail-sub">{group.statuses.length} update{group.statuses.length !== 1 ? 's' : ''}</div>
-                  </div>
-                </button>
-              ))}
+              <button className="new-status-btn" onClick={() => setWorkspace('status')}>
+                <div className="status-bubble-avatar mine">{initial(me?.display_name)}</div>
+                <div className="new-status-label">Post status</div>
+              </button>
+              <div className="status-bubbles">
+                {statusFeed.map(group => (
+                  <button key={group.user_id} className={`status-bubble ${group.all_viewed ? 'viewed' : 'unviewed'}`}
+                    onClick={() => { setStoryViewerId(group.user_id); setStoryViewerIndex(0) }}>
+                    <div className="status-bubble-avatar">{initial(group.display_name)}</div>
+                    {!group.all_viewed && <span className="status-bubble-badge" />}
+                    <div className="status-bubble-name">{group.display_name}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {showNewConv && (
+          {workspace === 'calls' && (
+            <div className="calls-sidebar">
+              <div className="sidebar-search">
+                <input placeholder="Search calls…" />
+              </div>
+              <div className="call-list">
+                {callsFeed.length === 0 && <div className="empty-convs">No calls yet.</div>}
+                {callsFeed.map(call => {
+                  const other = call.participants?.find(p => p.user_id !== me?.id)
+                  return (
+                    <button key={call.id} className="call-item">
+                      <div className="call-avatar">{initial(other?.display_name)}</div>
+                      <div className="call-info">
+                        <div className="call-name">{other?.display_name}</div>
+                        <div className="call-meta">{fmtTime(call.ended_at || call.started_at)}</div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {workspace === 'settings' && (
+            <div className="settings-sidebar">
+              <div className="sidebar-me">
+                <div className="sidebar-me-avatar">{initial(me?.display_name)}</div>
+                <div>
+                  <div className="sidebar-me-name">{me?.display_name}</div>
+                  <div className="sidebar-me-sub">{me?.phone_number}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {workspace === 'chats' && showNewConv && (
             <div className="sidebar-drawer new-chat-drawer">
               <div className="drawer-head">
                 <div>
@@ -1074,14 +1107,69 @@ export default function App() {
           )}
         </div>
 
-        <div className="sidebar-me">
-          <div className="sidebar-me-avatar">{initial(me?.display_name)}</div>
-          <div>
-            <div className="sidebar-me-name">{me?.display_name}</div>
-            <div className="sidebar-me-sub">{me?.phone_number}</div>
-          </div>
+        <div className="sidebar-tabs">
+          <button className={`tab-btn ${workspace === 'chats' ? 'active' : ''}`}
+            onClick={() => setWorkspace('chats')} title="Chats">
+            <MessagesIcon />
+            <span>Chats</span>
+          </button>
+          <button className={`tab-btn ${workspace === 'status' ? 'active' : ''}`}
+            onClick={() => setWorkspace('status')} title="Status">
+            <StatusIcon />
+            <span>Status</span>
+          </button>
+          <button className={`tab-btn ${workspace === 'calls' ? 'active' : ''}`}
+            onClick={() => setWorkspace('calls')} title="Calls">
+            <CallsIcon />
+            <span>Calls</span>
+          </button>
+          <button className={`tab-btn ${workspace === 'settings' ? 'active' : ''}`}
+            onClick={() => setWorkspace('settings')} title="Settings">
+            <SettingsIcon />
+            <span>Settings</span>
+          </button>
         </div>
       </aside>
+
+      {/* ── Story Carousel Viewer ── */}
+      {storyViewerId && (
+        <div className="story-viewer">
+          <button className="story-close" onClick={() => setStoryViewerId(null)}><CloseIcon /></button>
+          {statusFeed.find(g => g.user_id === storyViewerId) && (
+            (() => {
+              const group = statusFeed.find(g => g.user_id === storyViewerId)
+              const story = group.statuses[storyViewerIndex]
+              if (!story) return null
+              return (
+                <div className="story-viewer-inner">
+                  <div className="story-header">
+                    <div className="story-avatar">{initial(group.display_name)}</div>
+                    <div className="story-info">
+                      <div className="story-name">{group.display_name}</div>
+                      <div className="story-time">{fmtTime(story.created_at)}</div>
+                    </div>
+                  </div>
+                  <div className="story-content" style={{ '--sbg': story.bg_color || '#1e1e21' }}>
+                    {story.type === 'image' && <img src={story.media_url} alt="" />}
+                    {story.type === 'video' && <video src={story.media_url} autoPlay muted />}
+                    {story.type === 'text' && <div className="story-text">{story.content}</div>}
+                  </div>
+                  <div className="story-progress">
+                    {group.statuses.map((_, i) => (
+                      <div key={i} className={`progress-bar ${i < storyViewerIndex ? 'done' : i === storyViewerIndex ? 'active' : ''}`} />
+                    ))}
+                  </div>
+                  <div className="story-nav">
+                    <button className="nav-prev" onClick={() => storyViewerIndex > 0 && setStoryViewerIndex(storyViewerIndex - 1)} />
+                    <button className="nav-next" onClick={() => storyViewerIndex < group.statuses.length - 1 && setStoryViewerIndex(storyViewerIndex + 1)} />
+                  </div>
+                </div>
+              )
+            })()
+          )}
+        </div>
+      )}
+
 
       {/* ── Main workspace ── */}
       {workspace === 'chats' && (
@@ -1193,12 +1281,11 @@ export default function App() {
       {workspace === 'status' && (
         <main className="space-pane">
           <div className="space-head">
-            <h2>Status</h2>
-            <p>Share updates and view stories from your contacts.</p>
+            <h2>Status Updates</h2>
           </div>
           <div className="space-content status-space">
-            <section className="status-column mine">
-              <h3>My updates</h3>
+            <section className="status-composer-section">
+              <div className="status-composer-header">Share your story</div>
               <div className="status-composer">
                 <textarea value={statusText} onChange={e => setStatusText(e.target.value)} placeholder="What's on your mind?" />
                 <div className="status-composer-row">
@@ -1208,38 +1295,48 @@ export default function App() {
                   <button className="status-post-btn" onClick={postStatus} disabled={!statusText.trim()}>Post</button>
                 </div>
               </div>
-              <div className="status-feed-list">
-                {statusMine.map(s => (
-                  <div key={s.id} className="status-item mine" style={{ '--sbg': s.bg_color || '#1e1e21' }}>
-                    {s.type === 'image' ? <img src={s.media_url} alt="" /> : s.type === 'video' ? <video src={s.media_url} controls /> : <span>{s.content}</span>}
-                    <div className="status-meta"><span>{s.view_count ?? 0} views</span><button onClick={() => deleteStatus(s.id)}>Delete</button></div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="status-column">
-              <h3>Recent updates</h3>
-              <div className="status-feed-list">
-                {statusFeed.length === 0 && <div className="empty-convs">No status updates yet.</div>}
-                {statusFeed.map(group => (
-                  <div key={group.user_id} className="status-group">
-                    <button className="status-group-header" onClick={() => setExpandedStatus(expandedStatus === group.user_id ? null : group.user_id)}>
-                      <div className={`status-group-avatar ${group.all_viewed ? 'viewed' : 'new'}`}>{initial(group.display_name)}</div>
-                      <div className="status-group-info">
-                        <span className="status-group-name">{group.display_name}</span>
-                        <span className="status-group-count">{group.statuses.length} update{group.statuses.length !== 1 ? 's' : ''}</span>
-                      </div>
-                      <span className="status-group-chevron">{expandedStatus === group.user_id ? '▲' : '▼'}</span>
-                    </button>
-                    {expandedStatus === group.user_id && group.statuses.map(s => (
-                      <div key={s.id} className={`status-item ${s.viewed ? 'viewed' : 'unviewed'}`} style={{ '--sbg': s.bg_color || '#1e1e21' }} onClick={() => !s.viewed && viewStatus(s.id)}>
-                        {s.type === 'image' ? <img src={s.media_url} alt="" /> : s.type === 'video' ? <video src={s.media_url} controls /> : <span>{s.content}</span>}
+              {statusMine.length > 0 && (
+                <div className="my-status-grid">
+                  <div className="my-status-header">Your stories</div>
+                  <div className="status-grid">
+                    {statusMine.map(s => (
+                      <div key={s.id} className="status-item" style={{ '--sbg': s.bg_color || '#1e1e21' }}>
+                        {s.type === 'image' && <img src={s.media_url} alt="" />}
+                        {s.type === 'video' && <video src={s.media_url} />}
+                        {s.type === 'text' && <div className="status-text">{s.content}</div>}
+                        <div className="status-meta">
+                          <span>{s.view_count ?? 0} views</span>
+                          <button className="status-delete" onClick={() => deleteStatus(s.id)}><DeleteIcon /></button>
+                        </div>
                       </div>
                     ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
+            </section>
+
+            <section className="status-stories-section">
+              <div className="status-stories-header">Recent stories</div>
+              {statusFeed.length === 0 && (
+                <div className="empty-convs">No stories yet. Follow contacts to see their updates.</div>
+              )}
+              {statusFeed.length > 0 && (
+                <div className="story-bubbles-grid">
+                  {statusFeed.map(group => (
+                    <button key={group.user_id} className={`story-bubble-container ${group.all_viewed ? 'viewed' : 'unviewed'}`}
+                      onClick={() => { setStoryViewerId(group.user_id); setStoryViewerIndex(0) }}>
+                      <div className="story-bubble">
+                        {group.statuses[0]?.type === 'image' && <img src={group.statuses[0]?.media_url} alt="" />}
+                        {group.statuses[0]?.type === 'video' && <div className="video-placeholder">🎬</div>}
+                        {group.statuses[0]?.type === 'text' && <div className="text-placeholder">{group.statuses[0]?.content?.substring(0, 20)}</div>}
+                        {!group.all_viewed && <span className="story-unviewed-ring" />}
+                      </div>
+                      <div className="story-bubble-name">{group.display_name}</div>
+                      <div className="story-bubble-count">{group.statuses.length}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
         </main>
