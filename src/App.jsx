@@ -255,7 +255,7 @@ export default function App() {
         break
 
       case 'status.new':
-        if (tab === 'status') loadStatuses()
+        loadStatuses()
         break
 
       case 'call.offer':
@@ -397,6 +397,8 @@ export default function App() {
   }, [api, showToast])
 
   useEffect(() => { if (tab === 'status') loadStatuses() }, [tab, loadStatuses])
+
+  const statusPreview = useMemo(() => statusFeed.slice(0, 4), [statusFeed])
 
   // ── Open conversation ──────────────────────────────────────────────────────
   const openConversation = useCallback(async (convId) => {
@@ -805,169 +807,236 @@ export default function App() {
           <span className="sidebar-wordmark">Letta</span>
           <div className="sidebar-top-right">
             <div className={`ws-dot ${wsState}`} title={wsState} />
-            <button className="icon-btn" onClick={() => setShowNewConv(true)} title="New chat">✏</button>
+            <button className={`icon-btn ${tab === 'status' ? 'active' : ''}`} onClick={() => setTab(p => p === 'status' ? 'chats' : 'status')} title="Statuses">🔮</button>
+            <button className={`icon-btn ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab(p => p === 'settings' ? 'chats' : 'settings')} title="Settings">⚙</button>
+            <button className={`icon-btn primary ${showNewConv ? 'active' : ''}`} onClick={() => { setTab('chats'); setShowNewConv(p => !p) }} title="New chat">✏</button>
           </div>
         </div>
 
-        <div className="sidebar-tabs">
-          {['chats', 'status', 'settings'].map(t => (
-            <button key={t} className={`s-tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-              {t === 'chats' ? '💬' : t === 'status' ? '🔮' : '⚙'} {t}
-            </button>
-          ))}
-        </div>
+        <div className="sidebar-main">
+          <div className="sidebar-search">
+            <input value={convSearch} onChange={e => setConvSearch(e.target.value)} placeholder="Search conversations…" />
+          </div>
 
-        {/* Chats */}
-        {tab === 'chats' && (
-          <>
-            <div className="sidebar-search">
-              <input value={convSearch} onChange={e => setConvSearch(e.target.value)} placeholder="Search conversations…" />
-            </div>
-            <div className="conv-list">
-              {filteredConvs.length === 0 && (
-                <div className="empty-convs">No conversations yet.<br />Start one with ✏ above.</div>
-              )}
-              {filteredConvs.map(c => {
-                const isGroup = c.type === 'group'
-                const other = c.members?.find(m => m.user_id !== me?.id)
-                const name = isGroup ? (c.name || 'Group') : (other?.display_name || '…')
-                const presence = other ? presenceMap[other.user_id] : null
-                const lastMsg = c.last_message
-                const preview = lastMsg?.deleted_at ? '🚫 Deleted' : lastMsg?.type !== 'text' ? `📎 ${lastMsg?.type || ''}` : (lastMsg?.content || '')
-                return (
-                  <button key={c.id} className={`conv-item ${activeConvId === c.id ? 'active' : ''}`}
-                    onClick={() => openConversation(c.id)}>
-                    <div className="conv-avatar">
-                      {initial(name)}
-                      {presence?.online && <span className="online-pip" />}
+          <div className="conv-list">
+            {filteredConvs.length === 0 && (
+              <div className="empty-convs">No conversations yet.<br />Start one with ✏ above.</div>
+            )}
+            {filteredConvs.map(c => {
+              const isGroup = c.type === 'group'
+              const other = c.members?.find(m => m.user_id !== me?.id)
+              const name = isGroup ? (c.name || 'Group') : (other?.display_name || '…')
+              const presence = other ? presenceMap[other.user_id] : null
+              const lastMsg = c.last_message
+              const preview = lastMsg?.deleted_at ? '🚫 Deleted' : lastMsg?.type !== 'text' ? `📎 ${lastMsg?.type || ''}` : (lastMsg?.content || '')
+              return (
+                <button key={c.id} className={`conv-item ${activeConvId === c.id ? 'active' : ''}`}
+                  onClick={() => openConversation(c.id)}>
+                  <div className="conv-avatar">
+                    {initial(name)}
+                    {presence?.online && <span className="online-pip" />}
+                  </div>
+                  <div className="conv-body">
+                    <div className="conv-name-row">
+                      <span className="conv-name">{name}</span>
+                      <span className="conv-time">{fmtTime(lastMsg?.created_at)}</span>
                     </div>
-                    <div className="conv-body">
-                      <div className="conv-name-row">
-                        <span className="conv-name">{name}</span>
-                        <span className="conv-time">{fmtTime(lastMsg?.created_at)}</span>
-                      </div>
-                      <div className="conv-preview-row">
-                        <span className="conv-preview">{preview}</span>
-                        {!!c.unread_count && <span className="unread-badge">{c.unread_count > 99 ? '99+' : c.unread_count}</span>}
-                      </div>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </>
-        )}
-
-        {/* Status */}
-        {tab === 'status' && (
-          <div className="status-panel">
-            <div className="status-composer">
-              <textarea value={statusText} onChange={e => setStatusText(e.target.value)} placeholder="What's on your mind?" />
-              <div className="status-composer-row">
-                <input type="color" value={statusColor} onChange={e => setStatusColor(e.target.value)} title="Background color" />
-                <label className="status-media-btn" title="Image">
-                  🖼
-                  <input type="file" accept="image/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'image')} />
-                </label>
-                <label className="status-media-btn" title="Video">
-                  🎬
-                  <input type="file" accept="video/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'video')} />
-                </label>
-                <button className="status-post-btn" onClick={postStatus} disabled={!statusText.trim()}>Post</button>
-              </div>
-            </div>
-
-            {statusMine.length > 0 && (
-              <div className="status-section">
-                <div className="status-section-title">My status</div>
-                {statusMine.map(s => (
-                  <div key={s.id} className="status-item mine" style={{ '--sbg': s.bg_color || '#1e1e21' }}>
-                    {s.type === 'image' ? <img src={s.media_url} alt="" /> :
-                      s.type === 'video' ? <video src={s.media_url} controls /> :
-                        <span>{s.content}</span>}
-                    <div className="status-meta">
-                      <span>{s.view_count ?? 0} views</span>
-                      <button onClick={() => deleteStatus(s.id)}>Delete</button>
+                    <div className="conv-preview-row">
+                      <span className="conv-preview">{preview}</span>
+                      {!!c.unread_count && <span className="unread-badge">{c.unread_count > 99 ? '99+' : c.unread_count}</span>}
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
+                </button>
+              )
+            })}
+          </div>
 
-            {statusFeed.length > 0 && (
-              <div className="status-section">
-                <div className="status-section-title">Updates</div>
-                {statusFeed.map(group => (
-                  <div key={group.user_id} className="status-group">
-                    <button className="status-group-header" onClick={() => setExpandedStatus(expandedStatus === group.user_id ? null : group.user_id)}>
-                      <div className={`status-group-avatar ${group.all_viewed ? 'viewed' : 'new'}`}>
-                        {initial(group.display_name)}
+          <div className="status-rail">
+            <button className="status-rail-item my-status" onClick={() => setTab('status')}>
+              <div className="status-rail-avatar mine">{initial(me?.display_name)}</div>
+              <div className="status-rail-copy">
+                <div className="status-rail-title">My status</div>
+                <div className="status-rail-sub">{statusMine.length ? `${statusMine.length} update${statusMine.length !== 1 ? 's' : ''}` : 'Post an update'}</div>
+              </div>
+            </button>
+            <div className="status-rail-list">
+              {statusPreview.length === 0 ? (
+                <button className="status-rail-empty" onClick={() => setTab('status')}>No updates yet</button>
+              ) : statusPreview.map(group => (
+                <button key={group.user_id} className="status-rail-item" onClick={() => { setTab('status'); setExpandedStatus(group.user_id) }}>
+                  <div className={`status-rail-avatar ${group.all_viewed ? 'viewed' : 'new'}`}>
+                    {initial(group.display_name)}
+                  </div>
+                  <div className="status-rail-copy">
+                    <div className="status-rail-title">{group.display_name}</div>
+                    <div className="status-rail-sub">{group.statuses.length} update{group.statuses.length !== 1 ? 's' : ''}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {showNewConv && (
+            <div className="sidebar-drawer new-chat-drawer">
+              <div className="drawer-head">
+                <div>
+                  <div className="drawer-kicker">New chat</div>
+                  <div className="drawer-title">Start a direct conversation</div>
+                </div>
+                <button className="drawer-close" onClick={() => { setShowNewConv(false); setUserSearch(''); setSelectedUser(null) }}>✕</button>
+              </div>
+              <div className="new-chat-body">
+                <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search by name…" autoFocus />
+                <div className="new-chat-results">
+                  {userResults.length === 0 && userSearch.trim().length >= 2 && (
+                    <div className="new-chat-empty">No matches yet.</div>
+                  )}
+                  {userResults.map(u => (
+                    <button key={u.id} className={`user-result ${selectedUser?.id === u.id ? 'selected' : ''}`}
+                      onClick={() => setSelectedUser(u)}>
+                      <div className="user-result-avatar">{initial(u.display_name)}</div>
+                      <div>
+                        <div className="user-result-name">{u.display_name}</div>
+                        {u.bio && <div className="user-result-bio">{u.bio}</div>}
                       </div>
-                      <div className="status-group-info">
-                        <span className="status-group-name">{group.display_name}</span>
-                        <span className="status-group-count">{group.statuses.length} update{group.statuses.length !== 1 ? 's' : ''}</span>
-                      </div>
-                      <span className="status-group-chevron">{expandedStatus === group.user_id ? '▲' : '▼'}</span>
                     </button>
-                    {expandedStatus === group.user_id && group.statuses.map(s => (
-                      <div key={s.id} className={`status-item ${s.viewed ? 'viewed' : 'unviewed'}`}
-                        style={{ '--sbg': s.bg_color || '#1e1e21' }}
-                        onClick={() => !s.viewed && viewStatus(s.id)}>
+                  ))}
+                </div>
+                <button className="modal-action-btn" disabled={!selectedUser} onClick={startDirect}>
+                  Start conversation{selectedUser ? ` with ${selectedUser.display_name}` : ''}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tab === 'status' && (
+            <div className="sidebar-drawer">
+              <div className="drawer-head">
+                <div>
+                  <div className="drawer-kicker">Status</div>
+                  <div className="drawer-title">Stories and updates</div>
+                </div>
+                <button className="drawer-close" onClick={() => setTab('chats')}>✕</button>
+              </div>
+              <div className="status-panel">
+                <div className="status-composer">
+                  <textarea value={statusText} onChange={e => setStatusText(e.target.value)} placeholder="What's on your mind?" />
+                  <div className="status-composer-row">
+                    <input type="color" value={statusColor} onChange={e => setStatusColor(e.target.value)} title="Background color" />
+                    <label className="status-media-btn" title="Image">
+                      🖼
+                      <input type="file" accept="image/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'image')} />
+                    </label>
+                    <label className="status-media-btn" title="Video">
+                      🎬
+                      <input type="file" accept="video/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'video')} />
+                    </label>
+                    <button className="status-post-btn" onClick={postStatus} disabled={!statusText.trim()}>Post</button>
+                  </div>
+                </div>
+
+                {statusMine.length > 0 && (
+                  <div className="status-section">
+                    <div className="status-section-title">My status</div>
+                    {statusMine.map(s => (
+                      <div key={s.id} className="status-item mine" style={{ '--sbg': s.bg_color || '#1e1e21' }}>
                         {s.type === 'image' ? <img src={s.media_url} alt="" /> :
                           s.type === 'video' ? <video src={s.media_url} controls /> :
                             <span>{s.content}</span>}
+                        <div className="status-meta">
+                          <span>{s.view_count ?? 0} views</span>
+                          <button onClick={() => deleteStatus(s.id)}>Delete</button>
+                        </div>
                       </div>
                     ))}
                   </div>
-                ))}
-              </div>
-            )}
-            {statusFeed.length === 0 && statusMine.length === 0 && (
-              <div className="empty-convs">No status updates yet.</div>
-            )}
-          </div>
-        )}
+                )}
 
-        {/* Settings */}
-        {tab === 'settings' && (
-          <div className="settings-panel">
-            <div className="settings-avatar">{initial(me?.display_name)}</div>
-            <div className="settings-name">{me?.display_name}</div>
-            <div className="settings-phone">{me?.phone_number}</div>
+                {statusFeed.length > 0 && (
+                  <div className="status-section">
+                    <div className="status-section-title">Updates</div>
+                    {statusFeed.map(group => (
+                      <div key={group.user_id} className="status-group">
+                        <button className="status-group-header" onClick={() => setExpandedStatus(expandedStatus === group.user_id ? null : group.user_id)}>
+                          <div className={`status-group-avatar ${group.all_viewed ? 'viewed' : 'new'}`}>
+                            {initial(group.display_name)}
+                          </div>
+                          <div className="status-group-info">
+                            <span className="status-group-name">{group.display_name}</span>
+                            <span className="status-group-count">{group.statuses.length} update{group.statuses.length !== 1 ? 's' : ''}</span>
+                          </div>
+                          <span className="status-group-chevron">{expandedStatus === group.user_id ? '▲' : '▼'}</span>
+                        </button>
+                        {expandedStatus === group.user_id && group.statuses.map(s => (
+                          <div key={s.id} className={`status-item ${s.viewed ? 'viewed' : 'unviewed'}`}
+                            style={{ '--sbg': s.bg_color || '#1e1e21' }}
+                            onClick={() => !s.viewed && viewStatus(s.id)}>
+                            {s.type === 'image' ? <img src={s.media_url} alt="" /> :
+                              s.type === 'video' ? <video src={s.media_url} controls /> :
+                                <span>{s.content}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-            <div className="settings-section">
-              <div className="settings-section-title">Notifications</div>
-              <label className="settings-toggle">
-                <span>Read receipts</span>
-                <input type="checkbox" defaultChecked={!!me?.receipts_visible}
-                  onChange={async e => { try { await api('/auth/users/me', { method: 'PATCH', body: JSON.stringify({ receipts_visible: e.target.checked }) }); setMe(p => ({ ...p, receipts_visible: e.target.checked })) } catch {} }} />
-              </label>
-              <label className="settings-toggle">
-                <span>Presence visible</span>
-                <input type="checkbox" defaultChecked={!!me?.presence_visible}
-                  onChange={async e => { try { await api('/auth/users/me', { method: 'PATCH', body: JSON.stringify({ presence_visible: e.target.checked }) }); setMe(p => ({ ...p, presence_visible: e.target.checked })) } catch {} }} />
-              </label>
-            </div>
-
-            <div className="settings-section">
-              <div className="settings-section-title">Focus mode</div>
-              <div className="focus-btns">
-                {['normal', 'quiet', 'off'].map(f => (
-                  <button key={f} className={`focus-btn ${focusProfile === f ? 'active' : ''}`}
-                    onClick={async () => { try { await api('/users/me/focus', { method: 'PATCH', body: JSON.stringify({ profile: f }) }); setFocusProfile(f) } catch (e) { showToast(e.message, 'error') } }}>
-                    {f}
-                  </button>
-                ))}
+                {statusFeed.length === 0 && statusMine.length === 0 && (
+                  <div className="empty-convs">No status updates yet.</div>
+                )}
               </div>
             </div>
+          )}
 
-            <button className="signout-btn" onClick={() => {
-              setToken(null); setRefreshTok(null); tokenRef.current = null; refreshRef.current = null
-              setMe(null); setConvs([]); setMsgsByConv({}); setActiveConvId(null)
-              if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close() }
-            }}>Sign out</button>
-          </div>
-        )}
+          {tab === 'settings' && (
+            <div className="sidebar-drawer">
+              <div className="drawer-head">
+                <div>
+                  <div className="drawer-kicker">Settings</div>
+                  <div className="drawer-title">Profile and privacy</div>
+                </div>
+                <button className="drawer-close" onClick={() => setTab('chats')}>✕</button>
+              </div>
+              <div className="settings-panel">
+                <div className="settings-avatar">{initial(me?.display_name)}</div>
+                <div className="settings-name">{me?.display_name}</div>
+                <div className="settings-phone">{me?.phone_number}</div>
+
+                <div className="settings-section">
+                  <div className="settings-section-title">Notifications</div>
+                  <label className="settings-toggle">
+                    <span>Read receipts</span>
+                    <input type="checkbox" defaultChecked={!!me?.receipts_visible}
+                      onChange={async e => { try { await api('/auth/users/me', { method: 'PATCH', body: JSON.stringify({ receipts_visible: e.target.checked }) }); setMe(p => ({ ...p, receipts_visible: e.target.checked })) } catch {} }} />
+                  </label>
+                  <label className="settings-toggle">
+                    <span>Presence visible</span>
+                    <input type="checkbox" defaultChecked={!!me?.presence_visible}
+                      onChange={async e => { try { await api('/auth/users/me', { method: 'PATCH', body: JSON.stringify({ presence_visible: e.target.checked }) }); setMe(p => ({ ...p, presence_visible: e.target.checked })) } catch {} }} />
+                  </label>
+                </div>
+
+                <div className="settings-section">
+                  <div className="settings-section-title">Focus mode</div>
+                  <div className="focus-btns">
+                    {['normal', 'quiet', 'off'].map(f => (
+                      <button key={f} className={`focus-btn ${focusProfile === f ? 'active' : ''}`}
+                        onClick={async () => { try { await api('/users/me/focus', { method: 'PATCH', body: JSON.stringify({ profile: f }) }); setFocusProfile(f) } catch (e) { showToast(e.message, 'error') } }}>
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button className="signout-btn" onClick={() => {
+                  setToken(null); setRefreshTok(null); tokenRef.current = null; refreshRef.current = null
+                  setMe(null); setConvs([]); setMsgsByConv({}); setActiveConvId(null)
+                  if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close() }
+                }}>Sign out</button>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="sidebar-me">
           <div className="sidebar-me-avatar">{initial(me?.display_name)}</div>
@@ -1118,36 +1187,6 @@ export default function App() {
                 callState.status === 'reconnecting' ? '🔄 Reconnecting…' : callState.status}
           </span>
           <button className="call-bar-end" onClick={endCall}>End</button>
-        </div>
-      )}
-
-      {/* ── New conversation modal ── */}
-      {showNewConv && (
-        <div className="modal-overlay" onClick={e => { if (e.target.className === 'modal-overlay') { setShowNewConv(false); setUserSearch(''); setSelectedUser(null) } }}>
-          <div className="modal">
-            <div className="modal-head">
-              <span>New conversation</span>
-              <button onClick={() => { setShowNewConv(false); setUserSearch(''); setSelectedUser(null) }}>✕</button>
-            </div>
-            <div className="modal-body">
-              <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search by name…" autoFocus />
-              <div className="user-results">
-                {userResults.map(u => (
-                  <button key={u.id} className={`user-result ${selectedUser?.id === u.id ? 'selected' : ''}`}
-                    onClick={() => setSelectedUser(u)}>
-                    <div className="user-result-avatar">{initial(u.display_name)}</div>
-                    <div>
-                      <div className="user-result-name">{u.display_name}</div>
-                      {u.bio && <div className="user-result-bio">{u.bio}</div>}
-                    </div>
-                  </button>
-                ))}
-              </div>
-              <button className="modal-action-btn" disabled={!selectedUser} onClick={startDirect}>
-                Start conversation{selectedUser ? ` with ${selectedUser.display_name}` : ''}
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
