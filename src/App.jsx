@@ -48,16 +48,19 @@ export default function App() {
   const [pins, setPins] = useState([])
 
   // UI state
-  const [tab, setTab] = useState('chats') // chats | status | settings
+  const [workspace, setWorkspace] = useState('chats') // chats | status | calls | settings
   const [draft, setDraft] = useState('')
   const [composerMode, setComposerMode] = useState('text') // text | poll
   const [pollQ, setPollQ] = useState('')
   const [pollOpts, setPollOpts] = useState('Option A\nOption B')
   const [convSearch, setConvSearch] = useState('')
   const [showNewConv, setShowNewConv] = useState(false)
+  const [newChatMode, setNewChatMode] = useState('direct') // direct | group
   const [userSearch, setUserSearch] = useState('')
   const [userResults, setUserResults] = useState([])
   const [selectedUser, setSelectedUser] = useState(null)
+  const [groupName, setGroupName] = useState('')
+  const [selectedUsers, setSelectedUsers] = useState([])
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
   const [showReactionPicker, setShowReactionPicker] = useState(null) // msgId | null
   const [reactionPickerPos, setReactionPickerPos] = useState({ x: 0, y: 0 })
@@ -75,6 +78,10 @@ export default function App() {
   const [statusText, setStatusText] = useState('')
   const [statusColor, setStatusColor] = useState('#1e1e21')
   const [expandedStatus, setExpandedStatus] = useState(null) // userId whose statuses are expanded
+
+  // Calls history
+  const [callsFeed, setCallsFeed] = useState([])
+  const [callsBusy, setCallsBusy] = useState(false)
 
   // Calls
   const [callState, setCallState] = useState({ active: false, incoming: null, callId: null, status: 'idle', peerUserId: null })
@@ -292,7 +299,7 @@ export default function App() {
       default:
         break
     }
-  }, [me?.id, tab]) // eslint-disable-line
+  }, [me?.id]) // eslint-disable-line
 
   const connectWS = useCallback((accessToken) => {
     if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close() }
@@ -396,12 +403,30 @@ export default function App() {
     } catch (e) { showToast(e.message, 'error') }
   }, [api, showToast])
 
-  useEffect(() => { if (tab === 'status') loadStatuses() }, [tab, loadStatuses])
+  const loadCalls = useCallback(async () => {
+    try {
+      setCallsBusy(true)
+      setCallsFeed(await api('/calls?limit=40'))
+    } catch (e) {
+      showToast(e.message, 'error')
+    } finally {
+      setCallsBusy(false)
+    }
+  }, [api, showToast])
+
+  useEffect(() => { if (workspace === 'status') loadStatuses() }, [workspace, loadStatuses])
+  useEffect(() => { if (workspace === 'calls') loadCalls() }, [workspace, loadCalls])
+  useEffect(() => {
+    if (!token) return
+    loadStatuses()
+    loadCalls()
+  }, [token, loadStatuses, loadCalls])
 
   const statusPreview = useMemo(() => statusFeed.slice(0, 4), [statusFeed])
 
   // ── Open conversation ──────────────────────────────────────────────────────
   const openConversation = useCallback(async (convId) => {
+    setWorkspace('chats')
     setActiveConvId(convId)
     setMobileSidebarOpen(false)
     setShowHeaderMenu(false)
@@ -587,10 +612,26 @@ export default function App() {
     try {
       const conv = await api('/conversations/direct', { method: 'POST', body: JSON.stringify({ other_user_id: selectedUser.id }) })
       setConvs(prev => prev.some(c => c.id === conv.id) ? prev : [conv, ...prev])
-      setShowNewConv(false); setSelectedUser(null); setUserSearch('')
+      setShowNewConv(false); setSelectedUser(null); setUserSearch(''); setGroupName(''); setSelectedUsers([]); setNewChatMode('direct')
       openConversation(conv.id)
     } catch (e) { showToast(e.message, 'error') }
   }, [selectedUser, api, openConversation, showToast])
+
+  const startGroup = useCallback(async () => {
+    if (!groupName.trim() || selectedUsers.length < 2) return
+    try {
+      const conv = await api('/conversations/group', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: groupName.trim(),
+          member_ids: selectedUsers.map(u => u.id),
+        }),
+      })
+      setConvs(prev => prev.some(c => c.id === conv.id) ? prev : [conv, ...prev])
+      setShowNewConv(false); setSelectedUser(null); setUserSearch(''); setGroupName(''); setSelectedUsers([]); setNewChatMode('direct')
+      openConversation(conv.id)
+    } catch (e) { showToast(e.message, 'error') }
+  }, [groupName, selectedUsers, api, openConversation, showToast])
 
   // ── Status ─────────────────────────────────────────────────────────────────
   const postStatus = useCallback(async () => {
@@ -681,6 +722,25 @@ export default function App() {
       const name = c.type === 'group' ? (c.name || 'Group') : (c.members?.find(m => m.user_id !== me?.id)?.display_name || '…')
       return name.toLowerCase().includes(convSearch.toLowerCase())
     }), [convs, convSearch, me?.id])
+
+  const callPeerName = useCallback((call) => {
+    const peerId = call.caller_id === me?.id ? call.callee_id : call.caller_id
+    const conv = convs.find(c => c.id === call.conversation_id)
+    const peer = conv?.members?.find(m => m.user_id === peerId)
+    return { peerId, name: peer?.display_name || 'Unknown user' }
+  }, [convs, me?.id])
+
+  const callBackUser = useCallback(async (userId) => {
+    try {
+      const conv = await api('/conversations/direct', { method: 'POST', body: JSON.stringify({ other_user_id: userId }) })
+      setConvs(prev => prev.some(c => c.id === conv.id) ? prev : [conv, ...prev])
+      setWorkspace('chats')
+      await openConversation(conv.id)
+      await startCall(userId)
+    } catch (e) {
+      showToast(e.message, 'error')
+    }
+  }, [api, openConversation, showToast, startCall])
 
   // ── Render helpers ─────────────────────────────────────────────────────────
   const renderMessage = (msg, idx) => {
@@ -807,9 +867,10 @@ export default function App() {
           <span className="sidebar-wordmark">Letta</span>
           <div className="sidebar-top-right">
             <div className={`ws-dot ${wsState}`} title={wsState} />
-            <button className={`icon-btn ${tab === 'status' ? 'active' : ''}`} onClick={() => setTab(p => p === 'status' ? 'chats' : 'status')} title="Statuses">🔮</button>
-            <button className={`icon-btn ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab(p => p === 'settings' ? 'chats' : 'settings')} title="Settings">⚙</button>
-            <button className={`icon-btn primary ${showNewConv ? 'active' : ''}`} onClick={() => { setTab('chats'); setShowNewConv(p => !p) }} title="New chat">✏</button>
+            <button className={`icon-btn ${workspace === 'status' ? 'active' : ''}`} onClick={() => setWorkspace('status')} title="Statuses">🔮</button>
+            <button className={`icon-btn ${workspace === 'calls' ? 'active' : ''}`} onClick={() => setWorkspace('calls')} title="Calls">📞</button>
+            <button className={`icon-btn ${workspace === 'settings' ? 'active' : ''}`} onClick={() => setWorkspace('settings')} title="Settings">⚙</button>
+            <button className={`icon-btn primary ${showNewConv ? 'active' : ''}`} onClick={() => { setWorkspace('chats'); setShowNewConv(p => !p) }} title="New chat">✏</button>
           </div>
         </div>
 
@@ -852,7 +913,7 @@ export default function App() {
           </div>
 
           <div className="status-rail">
-            <button className="status-rail-item my-status" onClick={() => setTab('status')}>
+            <button className="status-rail-item my-status" onClick={() => setWorkspace('status')}>
               <div className="status-rail-avatar mine">{initial(me?.display_name)}</div>
               <div className="status-rail-copy">
                 <div className="status-rail-title">My status</div>
@@ -861,9 +922,9 @@ export default function App() {
             </button>
             <div className="status-rail-list">
               {statusPreview.length === 0 ? (
-                <button className="status-rail-empty" onClick={() => setTab('status')}>No updates yet</button>
+                <button className="status-rail-empty" onClick={() => setWorkspace('status')}>No updates yet</button>
               ) : statusPreview.map(group => (
-                <button key={group.user_id} className="status-rail-item" onClick={() => { setTab('status'); setExpandedStatus(group.user_id) }}>
+                <button key={group.user_id} className="status-rail-item" onClick={() => { setWorkspace('status'); setExpandedStatus(group.user_id) }}>
                   <div className={`status-rail-avatar ${group.all_viewed ? 'viewed' : 'new'}`}>
                     {initial(group.display_name)}
                   </div>
@@ -883,17 +944,30 @@ export default function App() {
                   <div className="drawer-kicker">New chat</div>
                   <div className="drawer-title">Start a direct conversation</div>
                 </div>
-                <button className="drawer-close" onClick={() => { setShowNewConv(false); setUserSearch(''); setSelectedUser(null) }}>✕</button>
+                <button className="drawer-close" onClick={() => { setShowNewConv(false); setUserSearch(''); setSelectedUser(null); setGroupName(''); setSelectedUsers([]); setNewChatMode('direct') }}>✕</button>
               </div>
               <div className="new-chat-body">
+                <div className="new-chat-mode">
+                  <button className={newChatMode === 'direct' ? 'active' : ''} onClick={() => { setNewChatMode('direct'); setSelectedUsers([]); setGroupName('') }}>Direct</button>
+                  <button className={newChatMode === 'group' ? 'active' : ''} onClick={() => setNewChatMode('group')}>Group</button>
+                </div>
+                {newChatMode === 'group' && (
+                  <input value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="Group name…" />
+                )}
                 <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search by name…" autoFocus />
                 <div className="new-chat-results">
                   {userResults.length === 0 && userSearch.trim().length >= 2 && (
                     <div className="new-chat-empty">No matches yet.</div>
                   )}
                   {userResults.map(u => (
-                    <button key={u.id} className={`user-result ${selectedUser?.id === u.id ? 'selected' : ''}`}
-                      onClick={() => setSelectedUser(u)}>
+                    <button key={u.id} className={`user-result ${(newChatMode === 'direct' ? selectedUser?.id === u.id : selectedUsers.some(s => s.id === u.id)) ? 'selected' : ''}`}
+                      onClick={() => {
+                        if (newChatMode === 'direct') {
+                          setSelectedUser(u)
+                          return
+                        }
+                        setSelectedUsers(prev => prev.some(s => s.id === u.id) ? prev.filter(s => s.id !== u.id) : [...prev, u])
+                      }}>
                       <div className="user-result-avatar">{initial(u.display_name)}</div>
                       <div>
                         <div className="user-result-name">{u.display_name}</div>
@@ -902,137 +976,18 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                <button className="modal-action-btn" disabled={!selectedUser} onClick={startDirect}>
-                  Start conversation{selectedUser ? ` with ${selectedUser.display_name}` : ''}
+                {newChatMode === 'group' && selectedUsers.length > 0 && (
+                  <div className="new-chat-picked">{selectedUsers.length} selected</div>
+                )}
+                <button
+                  className="modal-action-btn"
+                  disabled={newChatMode === 'direct' ? !selectedUser : (!groupName.trim() || selectedUsers.length < 2)}
+                  onClick={newChatMode === 'direct' ? startDirect : startGroup}
+                >
+                  {newChatMode === 'direct'
+                    ? `Start conversation${selectedUser ? ` with ${selectedUser.display_name}` : ''}`
+                    : `Create group${groupName.trim() ? `: ${groupName.trim()}` : ''}`}
                 </button>
-              </div>
-            </div>
-          )}
-
-          {tab === 'status' && (
-            <div className="sidebar-drawer">
-              <div className="drawer-head">
-                <div>
-                  <div className="drawer-kicker">Status</div>
-                  <div className="drawer-title">Stories and updates</div>
-                </div>
-                <button className="drawer-close" onClick={() => setTab('chats')}>✕</button>
-              </div>
-              <div className="status-panel">
-                <div className="status-composer">
-                  <textarea value={statusText} onChange={e => setStatusText(e.target.value)} placeholder="What's on your mind?" />
-                  <div className="status-composer-row">
-                    <input type="color" value={statusColor} onChange={e => setStatusColor(e.target.value)} title="Background color" />
-                    <label className="status-media-btn" title="Image">
-                      🖼
-                      <input type="file" accept="image/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'image')} />
-                    </label>
-                    <label className="status-media-btn" title="Video">
-                      🎬
-                      <input type="file" accept="video/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'video')} />
-                    </label>
-                    <button className="status-post-btn" onClick={postStatus} disabled={!statusText.trim()}>Post</button>
-                  </div>
-                </div>
-
-                {statusMine.length > 0 && (
-                  <div className="status-section">
-                    <div className="status-section-title">My status</div>
-                    {statusMine.map(s => (
-                      <div key={s.id} className="status-item mine" style={{ '--sbg': s.bg_color || '#1e1e21' }}>
-                        {s.type === 'image' ? <img src={s.media_url} alt="" /> :
-                          s.type === 'video' ? <video src={s.media_url} controls /> :
-                            <span>{s.content}</span>}
-                        <div className="status-meta">
-                          <span>{s.view_count ?? 0} views</span>
-                          <button onClick={() => deleteStatus(s.id)}>Delete</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {statusFeed.length > 0 && (
-                  <div className="status-section">
-                    <div className="status-section-title">Updates</div>
-                    {statusFeed.map(group => (
-                      <div key={group.user_id} className="status-group">
-                        <button className="status-group-header" onClick={() => setExpandedStatus(expandedStatus === group.user_id ? null : group.user_id)}>
-                          <div className={`status-group-avatar ${group.all_viewed ? 'viewed' : 'new'}`}>
-                            {initial(group.display_name)}
-                          </div>
-                          <div className="status-group-info">
-                            <span className="status-group-name">{group.display_name}</span>
-                            <span className="status-group-count">{group.statuses.length} update{group.statuses.length !== 1 ? 's' : ''}</span>
-                          </div>
-                          <span className="status-group-chevron">{expandedStatus === group.user_id ? '▲' : '▼'}</span>
-                        </button>
-                        {expandedStatus === group.user_id && group.statuses.map(s => (
-                          <div key={s.id} className={`status-item ${s.viewed ? 'viewed' : 'unviewed'}`}
-                            style={{ '--sbg': s.bg_color || '#1e1e21' }}
-                            onClick={() => !s.viewed && viewStatus(s.id)}>
-                            {s.type === 'image' ? <img src={s.media_url} alt="" /> :
-                              s.type === 'video' ? <video src={s.media_url} controls /> :
-                                <span>{s.content}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {statusFeed.length === 0 && statusMine.length === 0 && (
-                  <div className="empty-convs">No status updates yet.</div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {tab === 'settings' && (
-            <div className="sidebar-drawer">
-              <div className="drawer-head">
-                <div>
-                  <div className="drawer-kicker">Settings</div>
-                  <div className="drawer-title">Profile and privacy</div>
-                </div>
-                <button className="drawer-close" onClick={() => setTab('chats')}>✕</button>
-              </div>
-              <div className="settings-panel">
-                <div className="settings-avatar">{initial(me?.display_name)}</div>
-                <div className="settings-name">{me?.display_name}</div>
-                <div className="settings-phone">{me?.phone_number}</div>
-
-                <div className="settings-section">
-                  <div className="settings-section-title">Notifications</div>
-                  <label className="settings-toggle">
-                    <span>Read receipts</span>
-                    <input type="checkbox" defaultChecked={!!me?.receipts_visible}
-                      onChange={async e => { try { await api('/auth/users/me', { method: 'PATCH', body: JSON.stringify({ receipts_visible: e.target.checked }) }); setMe(p => ({ ...p, receipts_visible: e.target.checked })) } catch {} }} />
-                  </label>
-                  <label className="settings-toggle">
-                    <span>Presence visible</span>
-                    <input type="checkbox" defaultChecked={!!me?.presence_visible}
-                      onChange={async e => { try { await api('/auth/users/me', { method: 'PATCH', body: JSON.stringify({ presence_visible: e.target.checked }) }); setMe(p => ({ ...p, presence_visible: e.target.checked })) } catch {} }} />
-                  </label>
-                </div>
-
-                <div className="settings-section">
-                  <div className="settings-section-title">Focus mode</div>
-                  <div className="focus-btns">
-                    {['normal', 'quiet', 'off'].map(f => (
-                      <button key={f} className={`focus-btn ${focusProfile === f ? 'active' : ''}`}
-                        onClick={async () => { try { await api('/users/me/focus', { method: 'PATCH', body: JSON.stringify({ profile: f }) }); setFocusProfile(f) } catch (e) { showToast(e.message, 'error') } }}>
-                        {f}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button className="signout-btn" onClick={() => {
-                  setToken(null); setRefreshTok(null); tokenRef.current = null; refreshRef.current = null
-                  setMe(null); setConvs([]); setMsgsByConv({}); setActiveConvId(null)
-                  if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close() }
-                }}>Sign out</button>
               </div>
             </div>
           )}
@@ -1047,115 +1002,244 @@ export default function App() {
         </div>
       </aside>
 
-      {/* ── Chat pane ── */}
-      <main className="chat-pane">
-        {!activeConv ? (
-          <div className="empty-state">
-            <div className="empty-icon">💬</div>
-            <div className="empty-title">Letta</div>
-            <div className="empty-sub">Select a conversation or start a new one.</div>
-            <button className="empty-open-btn" onClick={() => setMobileSidebarOpen(true)}>Open chats</button>
-          </div>
-        ) : (
-          <>
-            {/* Header */}
-            <div className="chat-header">
-              <button className="mobile-back-btn" onClick={() => { setMobileSidebarOpen(true) }}>←</button>
-              <div className="chat-header-avatar">
-                {initial(convTitle)}
-                {otherPresence?.online && <span className="online-pip" />}
-              </div>
-              <div className="chat-header-info">
-                <div className="chat-header-name">{convTitle}</div>
-                <div className="chat-header-sub">
-                  {typingMap[activeConvId]
-                    ? <span className="typing-anim">typing<span>.</span><span>.</span><span>.</span></span>
-                    : otherPresence?.online ? <span className="online-text">online</span>
-                      : otherPresence?.last_seen ? `last seen ${fmtTime(otherPresence.last_seen)}`
-                        : activeConv.type === 'group' ? `${activeConv.members?.length || 0} members` : ''}
+      {/* ── Main workspace ── */}
+      {workspace === 'chats' && (
+        <main className="chat-pane">
+          {!activeConv ? (
+            <div className="empty-state">
+              <div className="empty-icon">💬</div>
+              <div className="empty-title">Letta</div>
+              <div className="empty-sub">Select a conversation or start a new one.</div>
+              <button className="empty-open-btn" onClick={() => setMobileSidebarOpen(true)}>Open chats</button>
+            </div>
+          ) : (
+            <>
+              <div className="chat-header">
+                <button className="mobile-back-btn" onClick={() => { setMobileSidebarOpen(true) }}>←</button>
+                <div className="chat-header-avatar">
+                  {initial(convTitle)}
+                  {otherPresence?.online && <span className="online-pip" />}
                 </div>
-              </div>
-              <div className="chat-header-actions">
-                {callState.active ? (
-                  <button className="call-btn end-call" onClick={endCall} title="End call">📵</button>
-                ) : otherMember && (
-                  <button className="call-btn" onClick={() => startCall(otherMember.user_id)} title="Voice call">📞</button>
-                )}
-                <div className="header-menu-wrap" ref={headerMenuRef}>
-                  <button className="icon-btn" onClick={() => setShowHeaderMenu(p => !p)}>⋯</button>
-                  {showHeaderMenu && (
-                    <div className="header-menu">
-                      <button onClick={() => { setMute('1h'); setShowHeaderMenu(false) }}>🔕 Mute 1h</button>
-                      <button onClick={() => { setMute('8h'); setShowHeaderMenu(false) }}>🔕 Mute 8h</button>
-                      <button onClick={() => { clearMute(); setShowHeaderMenu(false) }}>🔔 Unmute</button>
-                      <div className="menu-divider" />
-                      <button onClick={() => { setDisappear(3600); setShowHeaderMenu(false) }}>⏱ Disappear 1h</button>
-                      <button onClick={() => { setDisappear(86400); setShowHeaderMenu(false) }}>⏱ Disappear 24h</button>
-                      <button onClick={() => { setDisappear(null); setShowHeaderMenu(false) }}>♾ Disappear off</button>
-                      {otherMember && <>
-                        <div className="menu-divider" />
-                        <button className="danger" onClick={() => { blockUser(otherMember.user_id); setShowHeaderMenu(false) }}>🚫 Block user</button>
-                      </>}
-                    </div>
+                <div className="chat-header-info">
+                  <div className="chat-header-name">{convTitle}</div>
+                  <div className="chat-header-sub">
+                    {typingMap[activeConvId]
+                      ? <span className="typing-anim">typing<span>.</span><span>.</span><span>.</span></span>
+                      : otherPresence?.online ? <span className="online-text">online</span>
+                        : otherPresence?.last_seen ? `last seen ${fmtTime(otherPresence.last_seen)}`
+                          : activeConv.type === 'group' ? `${activeConv.members?.length || 0} members` : ''}
+                  </div>
+                </div>
+                <div className="chat-header-actions">
+                  {callState.active ? (
+                    <button className="call-btn end-call" onClick={endCall} title="End call">📵</button>
+                  ) : otherMember && (
+                    <button className="call-btn" onClick={() => startCall(otherMember.user_id)} title="Voice call">📞</button>
                   )}
+                  <div className="header-menu-wrap" ref={headerMenuRef}>
+                    <button className="icon-btn" onClick={() => setShowHeaderMenu(p => !p)}>⋯</button>
+                    {showHeaderMenu && (
+                      <div className="header-menu">
+                        <button onClick={() => { setMute('1h'); setShowHeaderMenu(false) }}>🔕 Mute 1h</button>
+                        <button onClick={() => { setMute('8h'); setShowHeaderMenu(false) }}>🔕 Mute 8h</button>
+                        <button onClick={() => { clearMute(); setShowHeaderMenu(false) }}>🔔 Unmute</button>
+                        <div className="menu-divider" />
+                        <button onClick={() => { setDisappear(3600); setShowHeaderMenu(false) }}>⏱ Disappear 1h</button>
+                        <button onClick={() => { setDisappear(86400); setShowHeaderMenu(false) }}>⏱ Disappear 24h</button>
+                        <button onClick={() => { setDisappear(null); setShowHeaderMenu(false) }}>♾ Disappear off</button>
+                        {otherMember && <>
+                          <div className="menu-divider" />
+                          <button className="danger" onClick={() => { blockUser(otherMember.user_id); setShowHeaderMenu(false) }}>🚫 Block user</button>
+                        </>}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Pins bar */}
-            {pins.length > 0 && (
-              <div className="pins-bar">
-                📌
-                {pins.slice(0, 2).map(p => (
-                  <button key={p.id} className="pin-item" onClick={() => unpinMessage(p.id)} title="Unpin">
-                    {p.content || `[${p.type}]`}
-                  </button>
-                ))}
-                {pins.length > 2 && <span className="pins-more">+{pins.length - 2} more</span>}
-              </div>
-            )}
-
-            {/* Messages */}
-            <div className="messages-area">
-              {activeMsgs.map((msg, i) => renderMessage(msg, i))}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input */}
-            <div className="chat-input-area">
-              {composerMode === 'poll' && (
-                <div className="poll-composer">
-                  <input className="poll-q-input" value={pollQ} onChange={e => setPollQ(e.target.value)} placeholder="Poll question…" />
-                  <textarea className="poll-opts-input" value={pollOpts} onChange={e => setPollOpts(e.target.value)} placeholder="One option per line" rows={3} />
-                  <button className="poll-cancel" onClick={() => setComposerMode('text')}>✕ Cancel</button>
+              {pins.length > 0 && (
+                <div className="pins-bar">
+                  📌
+                  {pins.slice(0, 2).map(p => (
+                    <button key={p.id} className="pin-item" onClick={() => unpinMessage(p.id)} title="Unpin">
+                      {p.content || `[${p.type}]`}
+                    </button>
+                  ))}
+                  {pins.length > 2 && <span className="pins-more">+{pins.length - 2} more</span>}
                 </div>
               )}
-              <div className="input-row">
-                <div className="input-actions-left">
-                  <label className="attach-btn" title="Attach file">
-                    📎
-                    <input type="file" hidden accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
-                      onChange={e => e.target.files[0] && uploadMedia(e.target.files[0])} />
-                  </label>
-                  <button className="attach-btn poll-toggle" title="Poll" onClick={() => setComposerMode(m => m === 'poll' ? 'text' : 'poll')}>📊</button>
+
+              <div className="messages-area">
+                <div className="messages-stack">
+                  {activeMsgs.map((msg, i) => renderMessage(msg, i))}
+                  <div ref={messagesEndRef} />
                 </div>
-                <textarea
-                  className="msg-input"
-                  value={draft}
-                  onChange={e => { onDraftChange(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
-                  placeholder="Message…"
-                  rows={1}
-                />
-                <button className="send-btn" onClick={sendMessage}>➤</button>
               </div>
+
+              <div className="chat-input-area">
+                {composerMode === 'poll' && (
+                  <div className="poll-composer">
+                    <input className="poll-q-input" value={pollQ} onChange={e => setPollQ(e.target.value)} placeholder="Poll question…" />
+                    <textarea className="poll-opts-input" value={pollOpts} onChange={e => setPollOpts(e.target.value)} placeholder="One option per line" rows={3} />
+                    <button className="poll-cancel" onClick={() => setComposerMode('text')}>✕ Cancel</button>
+                  </div>
+                )}
+                <div className="input-row">
+                  <div className="input-actions-left">
+                    <label className="attach-btn" title="Attach file">
+                      📎
+                      <input type="file" hidden accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
+                        onChange={e => e.target.files[0] && uploadMedia(e.target.files[0])} />
+                    </label>
+                    <button className="attach-btn poll-toggle" title="Poll" onClick={() => setComposerMode(m => m === 'poll' ? 'text' : 'poll')}>📊</button>
+                  </div>
+                  <textarea
+                    className="msg-input"
+                    value={draft}
+                    onChange={e => { onDraftChange(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+                    placeholder="Message…"
+                    rows={1}
+                  />
+                  <button className="send-btn" onClick={sendMessage}>➤</button>
+                </div>
+              </div>
+            </>
+          )}
+        </main>
+      )}
+
+      {workspace === 'status' && (
+        <main className="space-pane">
+          <div className="space-head">
+            <h2>Status</h2>
+            <p>Share updates and view stories from your contacts.</p>
+          </div>
+          <div className="space-content status-space">
+            <section className="status-column mine">
+              <h3>My updates</h3>
+              <div className="status-composer">
+                <textarea value={statusText} onChange={e => setStatusText(e.target.value)} placeholder="What's on your mind?" />
+                <div className="status-composer-row">
+                  <input type="color" value={statusColor} onChange={e => setStatusColor(e.target.value)} title="Background color" />
+                  <label className="status-media-btn" title="Image">🖼<input type="file" accept="image/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'image')} /></label>
+                  <label className="status-media-btn" title="Video">🎬<input type="file" accept="video/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'video')} /></label>
+                  <button className="status-post-btn" onClick={postStatus} disabled={!statusText.trim()}>Post</button>
+                </div>
+              </div>
+              <div className="status-feed-list">
+                {statusMine.map(s => (
+                  <div key={s.id} className="status-item mine" style={{ '--sbg': s.bg_color || '#1e1e21' }}>
+                    {s.type === 'image' ? <img src={s.media_url} alt="" /> : s.type === 'video' ? <video src={s.media_url} controls /> : <span>{s.content}</span>}
+                    <div className="status-meta"><span>{s.view_count ?? 0} views</span><button onClick={() => deleteStatus(s.id)}>Delete</button></div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="status-column">
+              <h3>Recent updates</h3>
+              <div className="status-feed-list">
+                {statusFeed.length === 0 && <div className="empty-convs">No status updates yet.</div>}
+                {statusFeed.map(group => (
+                  <div key={group.user_id} className="status-group">
+                    <button className="status-group-header" onClick={() => setExpandedStatus(expandedStatus === group.user_id ? null : group.user_id)}>
+                      <div className={`status-group-avatar ${group.all_viewed ? 'viewed' : 'new'}`}>{initial(group.display_name)}</div>
+                      <div className="status-group-info">
+                        <span className="status-group-name">{group.display_name}</span>
+                        <span className="status-group-count">{group.statuses.length} update{group.statuses.length !== 1 ? 's' : ''}</span>
+                      </div>
+                      <span className="status-group-chevron">{expandedStatus === group.user_id ? '▲' : '▼'}</span>
+                    </button>
+                    {expandedStatus === group.user_id && group.statuses.map(s => (
+                      <div key={s.id} className={`status-item ${s.viewed ? 'viewed' : 'unviewed'}`} style={{ '--sbg': s.bg_color || '#1e1e21' }} onClick={() => !s.viewed && viewStatus(s.id)}>
+                        {s.type === 'image' ? <img src={s.media_url} alt="" /> : s.type === 'video' ? <video src={s.media_url} controls /> : <span>{s.content}</span>}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </main>
+      )}
+
+      {workspace === 'calls' && (
+        <main className="space-pane">
+          <div className="space-head">
+            <h2>Calls</h2>
+            <p>Recent call activity and quick redial.</p>
+          </div>
+          <div className="space-content calls-space">
+            {callsBusy && <div className="empty-convs">Loading calls…</div>}
+            {!callsBusy && callsFeed.length === 0 && <div className="empty-convs">No call history yet.</div>}
+            {!callsBusy && callsFeed.map(call => {
+              const peer = callPeerName(call)
+              const ts = call.ended_at || call.answered_at || call.started_at
+              return (
+                <div key={call.id} className="call-log-item">
+                  <div className="call-log-main">
+                    <div className="call-log-name">{peer.name}</div>
+                    <div className="call-log-sub">{call.status} · {fmtTime(ts)}</div>
+                  </div>
+                  <button className="call-btn" onClick={() => callBackUser(peer.peerId)} title="Call back">📞</button>
+                </div>
+              )
+            })}
+          </div>
+        </main>
+      )}
+
+      {workspace === 'settings' && (
+        <main className="space-pane">
+          <div className="space-head">
+            <h2>Settings</h2>
+            <p>Profile, privacy and notification controls.</p>
+          </div>
+          <div className="space-content settings-space">
+            <div className="settings-panel">
+              <div className="settings-avatar">{initial(me?.display_name)}</div>
+              <div className="settings-name">{me?.display_name}</div>
+              <div className="settings-phone">{me?.phone_number}</div>
+
+              <div className="settings-section">
+                <div className="settings-section-title">Notifications</div>
+                <label className="settings-toggle">
+                  <span>Read receipts</span>
+                  <input type="checkbox" defaultChecked={!!me?.receipts_visible}
+                    onChange={async e => { try { await api('/auth/users/me', { method: 'PATCH', body: JSON.stringify({ receipts_visible: e.target.checked }) }); setMe(p => ({ ...p, receipts_visible: e.target.checked })) } catch {} }} />
+                </label>
+                <label className="settings-toggle">
+                  <span>Presence visible</span>
+                  <input type="checkbox" defaultChecked={!!me?.presence_visible}
+                    onChange={async e => { try { await api('/auth/users/me', { method: 'PATCH', body: JSON.stringify({ presence_visible: e.target.checked }) }); setMe(p => ({ ...p, presence_visible: e.target.checked })) } catch {} }} />
+                </label>
+              </div>
+
+              <div className="settings-section">
+                <div className="settings-section-title">Focus mode</div>
+                <div className="focus-btns">
+                  {['normal', 'quiet', 'off'].map(f => (
+                    <button key={f} className={`focus-btn ${focusProfile === f ? 'active' : ''}`}
+                      onClick={async () => { try { await api('/users/me/focus', { method: 'PATCH', body: JSON.stringify({ profile: f }) }); setFocusProfile(f) } catch (e) { showToast(e.message, 'error') } }}>
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button className="signout-btn" onClick={() => {
+                setToken(null); setRefreshTok(null); tokenRef.current = null; refreshRef.current = null
+                setMe(null); setConvs([]); setMsgsByConv({}); setActiveConvId(null)
+                if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close() }
+              }}>Sign out</button>
             </div>
-          </>
-        )}
-      </main>
+          </div>
+        </main>
+      )}
 
       {/* ── Reaction picker popup ── */}
-      {showReactionPicker && (
+      {workspace === 'chats' && showReactionPicker && (
         <div className="reaction-picker-popup" style={{ left: reactionPickerPos.x, top: reactionPickerPos.y }}>
           {QUICK_EMOJIS.map(e => (
             <button key={e} onClick={() => reactToMessage(showReactionPicker, e)}>{e}</button>
