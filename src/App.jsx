@@ -27,6 +27,87 @@ function fmtDate(iso) {
 }
 function initial(name) { return (name || '?').trim()[0]?.toUpperCase() ?? '?' }
 
+function Icon({ children, title }) {
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      {children}
+    </svg>
+  )
+}
+
+function MessagesIcon() {
+  return <Icon><path d="M5 6h14v8H10l-5 4V6z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></Icon>
+}
+
+function StatusIcon() {
+  return <Icon><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M12 6.5v11M6.5 12h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
+}
+
+function CallsIcon() {
+  return <Icon><path d="M7.5 5.5c1.3 0 2.4.5 3.3 1.4l1.2 1.2c.4.4.4 1 0 1.4l-.8.8c-.2.2-.3.6-.2.9.4 1.1 1.4 2.2 2.5 2.6.3.1.7 0 .9-.2l.8-.8c.4-.4 1-.4 1.4 0l1.2 1.2c.9.9 1.4 2 1.4 3.3v1.1c0 .8-.6 1.5-1.4 1.6-1.1.1-2.7-.1-5-1-2.7-1.1-5.3-3.7-6.4-6.4-1-2.3-1.2-3.9-1-5 .1-.8.8-1.4 1.6-1.4h1.1z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" /></Icon>
+}
+
+function SettingsIcon() {
+  return <Icon><circle cx="12" cy="12" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></Icon>
+}
+
+function AddChatIcon() {
+  return <Icon><path d="M6 5.5h12v8H9l-3 2.6V5.5z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M15 8.5v4M13 10.5h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
+}
+
+function PaperclipIcon() {
+  return <Icon><path d="M9 12.5l5.8-5.8a3 3 0 1 1 4.2 4.2l-7.4 7.4a5 5 0 1 1-7.1-7.1l7.4-7.4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></Icon>
+}
+
+function PollIcon() {
+  return <Icon><path d="M6 17V7M11 17V10M16 17v-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M4.5 17.5h15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></Icon>
+}
+
+function SendIcon() {
+  return <Icon><path d="M4.5 11.5 19.5 4.5l-4 15-3.7-6.1-7.3-2z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" /></Icon>
+}
+
+function CloseIcon() {
+  return <Icon><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
+}
+
+function ImageIcon() {
+  return <Icon><rect x="4.5" y="5" width="15" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="M7 15l3.2-3.2 2.4 2.4 2.7-2.7 3.2 3.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" /><circle cx="9" cy="9" r="1.2" fill="currentColor" /></Icon>
+}
+
+function VideoIcon() {
+  return <Icon><rect x="4.5" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="M16.5 10.2 20 8.2v7.6l-3.5-2" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" /></Icon>
+}
+
+function CallEndIcon() {
+  return <Icon><path d="M7.5 6.5c1.3 0 2.4.5 3.3 1.4l1.2 1.2c.4.4.4 1 0 1.4l-.8.8c-.2.2-.3.6-.2.9.4 1.1 1.4 2.2 2.5 2.6.3.1.7 0 .9-.2l.8-.8c.4-.4 1-.4 1.4 0l1.2 1.2c.9.9 1.4 2 1.4 3.3v1.1c0 .8-.6 1.5-1.4 1.6-1.1.1-2.7-.1-5-1-2.7-1.1-5.3-3.7-6.4-6.4-1-2.3-1.2-3.9-1-5 .1-.8.8-1.4 1.6-1.4h1.1z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" /><path d="M18 6 6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
+}
+
+function MuteIcon() {
+  return <Icon><path d="M5.5 14V10.5h3l4-4v11l-4-4h-3z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M15 9.5a3.5 3.5 0 0 1 0 5M17.4 7.1a7 7 0 0 1 0 9.8" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></Icon>
+}
+
+function BellIcon() {
+  return <Icon><path d="M12 18a1.8 1.8 0 0 0 1.8-1.8h-3.6A1.8 1.8 0 0 0 12 18z" fill="currentColor" /><path d="M6.5 15.5h11l-1.2-1.9V10a4.3 4.3 0 1 0-8.6 0v3.6l-1.2 1.9z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></Icon>
+}
+
+function ClockIcon() {
+  return <Icon><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M12 8v4l2.7 1.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></Icon>
+}
+
+function BlockIcon() {
+  return <Icon><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M7.2 16.8 16.8 7.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
+}
+
+function DeleteIcon() {
+  return <Icon><path d="M6.5 7.5h11M9 7.5V6h6v1.5M8.5 7.5l.6 9h5.8l.6-9" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M10 10v4M14 10v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></Icon>
+}
+
+function RingIcon() {
+  return <Icon><path d="M12 4.5v2.2M12 17.3v2.2M4.5 12h2.2M17.3 12h2.2M6.5 6.5l1.6 1.6M15.9 15.9l1.6 1.6M17.5 6.5l-1.6 1.6M7.6 15.9 6 17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.8" /></Icon>
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
   // Auth
@@ -751,7 +832,7 @@ export default function App() {
 
     let body
     if (msg.deleted_at) {
-      body = <span className="deleted-msg">🚫 This message was deleted</span>
+      body = <span className="deleted-msg"><DeleteIcon /> This message was deleted</span>
     } else if (msg.type === 'image' && msg.media_url) {
       body = <img src={msg.media_url} alt="" className="msg-img" onClick={() => window.open(msg.media_url, '_blank')} />
     } else if (msg.type === 'video' && msg.media_url) {
@@ -759,7 +840,7 @@ export default function App() {
     } else if (msg.type === 'audio' && msg.media_url) {
       body = <audio src={msg.media_url} controls className="msg-audio" />
     } else if (msg.type === 'document' && msg.media_url) {
-      body = <a href={msg.media_url} target="_blank" rel="noreferrer" className="msg-doc">📎 Document</a>
+      body = <a href={msg.media_url} target="_blank" rel="noreferrer" className="msg-doc"><PaperclipIcon /> Document</a>
     } else if (msg.type === 'poll' && msg.poll_data) {
       let pd = {}; try { pd = JSON.parse(msg.poll_data) } catch {}
       body = (
@@ -867,10 +948,10 @@ export default function App() {
           <span className="sidebar-wordmark">Letta</span>
           <div className="sidebar-top-right">
             <div className={`ws-dot ${wsState}`} title={wsState} />
-            <button className={`icon-btn ${workspace === 'status' ? 'active' : ''}`} onClick={() => setWorkspace('status')} title="Statuses">🔮</button>
-            <button className={`icon-btn ${workspace === 'calls' ? 'active' : ''}`} onClick={() => setWorkspace('calls')} title="Calls">📞</button>
-            <button className={`icon-btn ${workspace === 'settings' ? 'active' : ''}`} onClick={() => setWorkspace('settings')} title="Settings">⚙</button>
-            <button className={`icon-btn primary ${showNewConv ? 'active' : ''}`} onClick={() => { setWorkspace('chats'); setShowNewConv(p => !p) }} title="New chat">✏</button>
+            <button className={`icon-btn ${workspace === 'status' ? 'active' : ''}`} onClick={() => setWorkspace('status')} title="Statuses"><StatusIcon /></button>
+            <button className={`icon-btn ${workspace === 'calls' ? 'active' : ''}`} onClick={() => setWorkspace('calls')} title="Calls"><CallsIcon /></button>
+            <button className={`icon-btn ${workspace === 'settings' ? 'active' : ''}`} onClick={() => setWorkspace('settings')} title="Settings"><SettingsIcon /></button>
+            <button className={`icon-btn primary ${showNewConv ? 'active' : ''}`} onClick={() => { setWorkspace('chats'); setShowNewConv(p => !p) }} title="New chat"><AddChatIcon /></button>
           </div>
         </div>
 
@@ -881,7 +962,7 @@ export default function App() {
 
           <div className="conv-list">
             {filteredConvs.length === 0 && (
-              <div className="empty-convs">No conversations yet.<br />Start one with ✏ above.</div>
+              <div className="empty-convs">No conversations yet.<br />Start one with the new chat button above.</div>
             )}
             {filteredConvs.map(c => {
               const isGroup = c.type === 'group'
@@ -889,7 +970,7 @@ export default function App() {
               const name = isGroup ? (c.name || 'Group') : (other?.display_name || '…')
               const presence = other ? presenceMap[other.user_id] : null
               const lastMsg = c.last_message
-              const preview = lastMsg?.deleted_at ? '🚫 Deleted' : lastMsg?.type !== 'text' ? `📎 ${lastMsg?.type || ''}` : (lastMsg?.content || '')
+              const preview = lastMsg?.deleted_at ? 'Deleted' : lastMsg?.type !== 'text' ? `${lastMsg?.type || 'Attachment'}` : (lastMsg?.content || '')
               return (
                 <button key={c.id} className={`conv-item ${activeConvId === c.id ? 'active' : ''}`}
                   onClick={() => openConversation(c.id)}>
@@ -912,7 +993,7 @@ export default function App() {
             })}
           </div>
 
-          <div className="status-rail">
+            <div className="status-rail">
             <button className="status-rail-item my-status" onClick={() => setWorkspace('status')}>
               <div className="status-rail-avatar mine">{initial(me?.display_name)}</div>
               <div className="status-rail-copy">
@@ -944,7 +1025,7 @@ export default function App() {
                   <div className="drawer-kicker">New chat</div>
                   <div className="drawer-title">Start a direct conversation</div>
                 </div>
-                <button className="drawer-close" onClick={() => { setShowNewConv(false); setUserSearch(''); setSelectedUser(null); setGroupName(''); setSelectedUsers([]); setNewChatMode('direct') }}>✕</button>
+                <button className="drawer-close" onClick={() => { setShowNewConv(false); setUserSearch(''); setSelectedUser(null); setGroupName(''); setSelectedUsers([]); setNewChatMode('direct') }}><CloseIcon /></button>
               </div>
               <div className="new-chat-body">
                 <div className="new-chat-mode">
@@ -1006,8 +1087,8 @@ export default function App() {
       {workspace === 'chats' && (
         <main className="chat-pane">
           {!activeConv ? (
-            <div className="empty-state">
-              <div className="empty-icon">💬</div>
+              <div className="empty-state">
+              <div className="empty-icon"><MessagesIcon /></div>
               <div className="empty-title">Letta</div>
               <div className="empty-sub">Select a conversation or start a new one.</div>
               <button className="empty-open-btn" onClick={() => setMobileSidebarOpen(true)}>Open chats</button>
@@ -1032,24 +1113,24 @@ export default function App() {
                 </div>
                 <div className="chat-header-actions">
                   {callState.active ? (
-                    <button className="call-btn end-call" onClick={endCall} title="End call">📵</button>
+                    <button className="call-btn end-call" onClick={endCall} title="End call"><CallEndIcon /></button>
                   ) : otherMember && (
-                    <button className="call-btn" onClick={() => startCall(otherMember.user_id)} title="Voice call">📞</button>
+                    <button className="call-btn" onClick={() => startCall(otherMember.user_id)} title="Voice call"><CallsIcon /></button>
                   )}
                   <div className="header-menu-wrap" ref={headerMenuRef}>
                     <button className="icon-btn" onClick={() => setShowHeaderMenu(p => !p)}>⋯</button>
                     {showHeaderMenu && (
                       <div className="header-menu">
-                        <button onClick={() => { setMute('1h'); setShowHeaderMenu(false) }}>🔕 Mute 1h</button>
-                        <button onClick={() => { setMute('8h'); setShowHeaderMenu(false) }}>🔕 Mute 8h</button>
-                        <button onClick={() => { clearMute(); setShowHeaderMenu(false) }}>🔔 Unmute</button>
+                        <button onClick={() => { setMute('1h'); setShowHeaderMenu(false) }}><MuteIcon /> Mute 1h</button>
+                        <button onClick={() => { setMute('8h'); setShowHeaderMenu(false) }}><MuteIcon /> Mute 8h</button>
+                        <button onClick={() => { clearMute(); setShowHeaderMenu(false) }}><BellIcon /> Unmute</button>
                         <div className="menu-divider" />
-                        <button onClick={() => { setDisappear(3600); setShowHeaderMenu(false) }}>⏱ Disappear 1h</button>
-                        <button onClick={() => { setDisappear(86400); setShowHeaderMenu(false) }}>⏱ Disappear 24h</button>
-                        <button onClick={() => { setDisappear(null); setShowHeaderMenu(false) }}>♾ Disappear off</button>
+                        <button onClick={() => { setDisappear(3600); setShowHeaderMenu(false) }}><ClockIcon /> Disappear 1h</button>
+                        <button onClick={() => { setDisappear(86400); setShowHeaderMenu(false) }}><ClockIcon /> Disappear 24h</button>
+                        <button onClick={() => { setDisappear(null); setShowHeaderMenu(false) }}><ClockIcon /> Disappear off</button>
                         {otherMember && <>
                           <div className="menu-divider" />
-                          <button className="danger" onClick={() => { blockUser(otherMember.user_id); setShowHeaderMenu(false) }}>🚫 Block user</button>
+                          <button className="danger" onClick={() => { blockUser(otherMember.user_id); setShowHeaderMenu(false) }}><BlockIcon /> Block user</button>
                         </>}
                       </div>
                     )}
@@ -1087,11 +1168,11 @@ export default function App() {
                 <div className="input-row">
                   <div className="input-actions-left">
                     <label className="attach-btn" title="Attach file">
-                      📎
+                      <PaperclipIcon />
                       <input type="file" hidden accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt"
                         onChange={e => e.target.files[0] && uploadMedia(e.target.files[0])} />
                     </label>
-                    <button className="attach-btn poll-toggle" title="Poll" onClick={() => setComposerMode(m => m === 'poll' ? 'text' : 'poll')}>📊</button>
+                    <button className="attach-btn poll-toggle" title="Poll" onClick={() => setComposerMode(m => m === 'poll' ? 'text' : 'poll')}><PollIcon /></button>
                   </div>
                   <textarea
                     className="msg-input"
@@ -1101,7 +1182,7 @@ export default function App() {
                     placeholder="Message…"
                     rows={1}
                   />
-                  <button className="send-btn" onClick={sendMessage}>➤</button>
+                  <button className="send-btn" onClick={sendMessage}><SendIcon /></button>
                 </div>
               </div>
             </>
@@ -1122,8 +1203,8 @@ export default function App() {
                 <textarea value={statusText} onChange={e => setStatusText(e.target.value)} placeholder="What's on your mind?" />
                 <div className="status-composer-row">
                   <input type="color" value={statusColor} onChange={e => setStatusColor(e.target.value)} title="Background color" />
-                  <label className="status-media-btn" title="Image">🖼<input type="file" accept="image/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'image')} /></label>
-                  <label className="status-media-btn" title="Video">🎬<input type="file" accept="video/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'video')} /></label>
+                  <label className="status-media-btn" title="Image"><ImageIcon /><input type="file" accept="image/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'image')} /></label>
+                  <label className="status-media-btn" title="Video"><VideoIcon /><input type="file" accept="video/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'video')} /></label>
                   <button className="status-post-btn" onClick={postStatus} disabled={!statusText.trim()}>Post</button>
                 </div>
               </div>
@@ -1182,7 +1263,7 @@ export default function App() {
                     <div className="call-log-name">{peer.name}</div>
                     <div className="call-log-sub">{call.status} · {fmtTime(ts)}</div>
                   </div>
-                  <button className="call-btn" onClick={() => callBackUser(peer.peerId)} title="Call back">📞</button>
+                  <button className="call-btn" onClick={() => callBackUser(peer.peerId)} title="Call back"><CallsIcon /></button>
                 </div>
               )
             })}
@@ -1251,7 +1332,7 @@ export default function App() {
       {callState.status === 'ringing' && callState.incoming && (
         <div className="call-overlay">
           <div className="call-card">
-            <div className="call-ring-anim">📞</div>
+            <div className="call-ring-anim"><RingIcon /></div>
             <div className="call-title">Incoming call</div>
             <div className="call-sub">Audio call</div>
             <div className="call-btns">
@@ -1266,9 +1347,9 @@ export default function App() {
       {callState.active && callState.status !== 'idle' && callState.status !== 'ringing' && (
         <div className="call-bar">
           <span className="call-bar-status">
-            {callState.status === 'calling' ? '🔔 Calling…' :
-              callState.status === 'connected' ? '🟢 Call connected' :
-                callState.status === 'reconnecting' ? '🔄 Reconnecting…' : callState.status}
+            {callState.status === 'calling' ? 'Calling…' :
+              callState.status === 'connected' ? 'Call connected' :
+                callState.status === 'reconnecting' ? 'Reconnecting…' : callState.status}
           </span>
           <button className="call-bar-end" onClick={endCall}>End</button>
         </div>

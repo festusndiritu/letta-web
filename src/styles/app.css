@@ -153,6 +153,13 @@ a { color: inherit; }
 }
 .icon-btn:hover { background: var(--bg3); color: var(--text1); }
 
+.ui-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex-shrink: 0;
+}
+
 /* Sidebar body */
 .sidebar-main {
   position: relative;
