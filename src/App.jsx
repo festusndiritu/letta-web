@@ -629,33 +629,6 @@ export default function App() {
     return () => { if (callDurationTimer.current) { clearInterval(callDurationTimer.current); callDurationTimer.current = null } }
   }, [callState.status])
 
-  // Story auto-advance (5s per story, then next person, then close)
-  useEffect(() => {
-    if (!storyViewerId) return
-    const isMine = storyViewerId === me?.id
-    const feed = statusFeedRef.current
-    const group = isMine ? { user_id: me?.id, statuses: statusMine } : feed.find(g => g.user_id === storyViewerId)
-    const story = group?.statuses?.[storyViewerIndex]
-    if (!isMine && story?.id) viewStatus(story.id)
-    const timer = setTimeout(() => {
-      const currentFeed = statusFeedRef.current
-      const currentGroup = isMine ? { statuses: statusMine } : currentFeed.find(g => g.user_id === storyViewerId)
-      if (!currentGroup) { setStoryViewerId(null); return }
-      if (storyViewerIndex < currentGroup.statuses.length - 1) {
-        setStoryViewerIndex(storyViewerIndex + 1)
-      } else {
-        const gIdx = isMine ? -1 : currentFeed.findIndex(g => g.user_id === storyViewerId)
-        if (gIdx >= 0 && gIdx < currentFeed.length - 1) {
-          setStoryViewerId(currentFeed[gIdx + 1].user_id)
-          setStoryViewerIndex(0)
-        } else {
-          setStoryViewerId(null)
-        }
-      }
-    }, 5000)
-    return () => clearTimeout(timer)
-  }, [storyViewerId, storyViewerIndex, me?.id, statusMine, viewStatus])
-
   const startCall = useCallback(async (calleeId) => {
     if (!activeConvId || !calleeId) return
     const callId = crypto.randomUUID()
@@ -805,6 +778,33 @@ export default function App() {
     try { await api(`/statuses/${statusId}/view`, { method: 'POST' }) ; loadStatuses() }
     catch {}
   }, [api, loadStatuses])
+
+  // Story auto-advance (5s per story, then next person, then close)
+  useEffect(() => {
+    if (!storyViewerId) return
+    const isMine = storyViewerId === me?.id
+    const feed = statusFeedRef.current
+    const group = isMine ? { user_id: me?.id, statuses: statusMine } : feed.find(g => g.user_id === storyViewerId)
+    const story = group?.statuses?.[storyViewerIndex]
+    if (!isMine && story?.id) viewStatus(story.id)
+    const timer = setTimeout(() => {
+      const currentFeed = statusFeedRef.current
+      const currentGroup = isMine ? { statuses: statusMine } : currentFeed.find(g => g.user_id === storyViewerId)
+      if (!currentGroup) { setStoryViewerId(null); return }
+      if (storyViewerIndex < currentGroup.statuses.length - 1) {
+        setStoryViewerIndex(storyViewerIndex + 1)
+      } else {
+        const gIdx = isMine ? -1 : currentFeed.findIndex(g => g.user_id === storyViewerId)
+        if (gIdx >= 0 && gIdx < currentFeed.length - 1) {
+          setStoryViewerId(currentFeed[gIdx + 1].user_id)
+          setStoryViewerIndex(0)
+        } else {
+          setStoryViewerId(null)
+        }
+      }
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [storyViewerId, storyViewerIndex, me?.id, statusMine, viewStatus])
 
   const deleteStatus = useCallback(async (statusId) => {
     try { await api(`/statuses/${statusId}`, { method: 'DELETE' }); loadStatuses() }
