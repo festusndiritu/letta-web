@@ -113,6 +113,7 @@ export default function App() {
   const [statusComposerOpen, setStatusComposerOpen] = useState(false)
   const [storyViewerId, setStoryViewerId] = useState(null) // userId of story being viewed
   const [storyViewerIndex, setStoryViewerIndex] = useState(0) // index in stories array
+  const [storyPaused, setStoryPaused] = useState(false)
 
   // Calls history
   const [callsFeed, setCallsFeed] = useState([])
@@ -629,6 +630,18 @@ export default function App() {
     return () => { if (callDurationTimer.current) { clearInterval(callDurationTimer.current); callDurationTimer.current = null } }
   }, [callState.status])
 
+  // Send call.end when user closes/refreshes the tab mid-call
+  useEffect(() => {
+    const onUnload = () => {
+      const cs = callStateRef.current
+      if (cs.active && cs.callId && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'call.end', payload: { call_id: cs.callId } }))
+      }
+    }
+    window.addEventListener('beforeunload', onUnload)
+    return () => window.removeEventListener('beforeunload', onUnload)
+  }, [])
+
   const startCall = useCallback(async (calleeId) => {
     if (!activeConvId || !calleeId) return
     const callId = crypto.randomUUID()
@@ -765,11 +778,11 @@ export default function App() {
     } catch (e) { showToast(e.message, 'error') }
   }, [statusText, statusColor, api, loadStatuses, showToast])
 
-  const uploadStatusMedia = useCallback(async (file, type) => {
+  const uploadStatusMedia = useCallback(async (file, type, caption = '') => {
     try {
       const form = new FormData(); form.append('file', file)
       const data = await api('/media/upload', { method: 'POST', body: form })
-      await api('/statuses', { method: 'POST', body: JSON.stringify({ type, content: null, media_url: data.url, bg_color: null }) })
+      await api('/statuses', { method: 'POST', body: JSON.stringify({ type, content: caption || null, media_url: data.url, bg_color: null }) })
       loadStatuses(); showToast('Status posted')
     } catch (e) { showToast(e.message, 'error') }
   }, [api, loadStatuses, showToast])
@@ -779,14 +792,16 @@ export default function App() {
     catch {}
   }, [api, loadStatuses])
 
-  // Story auto-advance (5s per story, then next person, then close)
+  // Story auto-advance — skips for video (video fires onVideoEnded instead); pauses on hold
   useEffect(() => {
-    if (!storyViewerId) return
+    if (!storyViewerId || storyPaused) return
     const isMine = storyViewerId === me?.id
     const feed = statusFeedRef.current
     const group = isMine ? { user_id: me?.id, statuses: statusMine } : feed.find(g => g.user_id === storyViewerId)
     const story = group?.statuses?.[storyViewerIndex]
     if (!isMine && story?.id) viewStatus(story.id)
+    // For video stories, rely on onVideoEnded; use 70s as a fallback only
+    const delay = story?.type === 'video' ? 70000 : 5000
     const timer = setTimeout(() => {
       const currentFeed = statusFeedRef.current
       const currentGroup = isMine ? { statuses: statusMine } : currentFeed.find(g => g.user_id === storyViewerId)
@@ -802,9 +817,26 @@ export default function App() {
           setStoryViewerId(null)
         }
       }
-    }, 5000)
+    }, delay)
     return () => clearTimeout(timer)
-  }, [storyViewerId, storyViewerIndex, me?.id, statusMine, viewStatus])
+  }, [storyViewerId, storyViewerIndex, storyPaused, me?.id, statusMine, viewStatus])
+
+  const advanceStory = useCallback(() => {
+    const feed = statusFeedRef.current
+    const isMine = storyViewerId === me?.id
+    const cur = isMine ? { statuses: statusMine } : feed.find(g => g.user_id === storyViewerId)
+    if (!cur) return
+    if (storyViewerIndex < cur.statuses.length - 1) {
+      setStoryViewerIndex(storyViewerIndex + 1)
+    } else {
+      const gIdx = isMine ? -1 : feed.findIndex(g => g.user_id === storyViewerId)
+      if (gIdx >= 0 && gIdx < feed.length - 1) {
+        setStoryViewerId(feed[gIdx + 1].user_id); setStoryViewerIndex(0)
+      } else {
+        setStoryViewerId(null)
+      }
+    }
+  }, [storyViewerId, storyViewerIndex, statusMine, statusFeedRef, me?.id, setStoryViewerId, setStoryViewerIndex])
 
   const deleteStatus = useCallback(async (statusId) => {
     try { await api(`/statuses/${statusId}`, { method: 'DELETE' }); loadStatuses() }
@@ -1338,7 +1370,10 @@ export default function App() {
         deleteStatus={deleteStatus}
         fmtTime={fmtTime}
         initial={initial}
+        isPaused={storyPaused}
         me={me}
+        onVideoEnded={advanceStory}
+        setIsPaused={setStoryPaused}
         setStoryViewerId={setStoryViewerId}
         setStoryViewerIndex={setStoryViewerIndex}
         statusFeed={statusFeed}

@@ -1,5 +1,5 @@
-import React from 'react'
-import { Image, Video } from 'lucide-react'
+import React, { useRef, useState } from 'react'
+import { Image, Video, X } from 'lucide-react'
 import { StoryRing } from '../ui/Icons'
 
 export default function StatusSidebar({
@@ -20,6 +20,11 @@ export default function StatusSidebar({
   statusText,
   uploadStatusMedia,
 }) {
+  const [pendingFile, setPendingFile] = useState(null) // { file, type, preview }
+  const [pendingCaption, setPendingCaption] = useState('')
+  const imageRef = useRef()
+  const videoRef = useRef()
+
   const openMine = () => {
     if (statusMine.length > 0) {
       setStoryViewerId(me?.id)
@@ -27,6 +32,28 @@ export default function StatusSidebar({
       return
     }
     setStatusComposerOpen(true)
+  }
+
+  const selectMedia = (file, type) => {
+    if (!file) return
+    const preview = URL.createObjectURL(file)
+    setPendingFile({ file, type, preview })
+    setPendingCaption('')
+    setStatusComposerOpen(false)
+  }
+
+  const submitMedia = async () => {
+    if (!pendingFile) return
+    await uploadStatusMedia(pendingFile.file, pendingFile.type, pendingCaption.trim())
+    URL.revokeObjectURL(pendingFile.preview)
+    setPendingFile(null)
+    setPendingCaption('')
+  }
+
+  const cancelMedia = () => {
+    if (pendingFile) URL.revokeObjectURL(pendingFile.preview)
+    setPendingFile(null)
+    setPendingCaption('')
   }
 
   return (
@@ -51,7 +78,33 @@ export default function StatusSidebar({
         </button>
       </div>
 
-      {statusComposerOpen && (
+      {/* Media caption step */}
+      {pendingFile && (
+        <div className="px-4 py-3 border-b border-[var(--border)] flex flex-col gap-3">
+          <div className="relative rounded-xl overflow-hidden bg-[var(--bg3)] max-h-48">
+            {pendingFile.type === 'image'
+              ? <img src={pendingFile.preview} alt="" className="w-full h-full object-contain max-h-48" />
+              : <video src={pendingFile.preview} className="w-full max-h-48 object-contain" muted playsInline />}
+            <button
+              className="absolute top-2 right-2 size-7 flex items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+              onClick={cancelMedia}
+            ><X className="size-3.5" /></button>
+          </div>
+          <input
+            value={pendingCaption}
+            onChange={e => setPendingCaption(e.target.value)}
+            placeholder="Add a caption… (optional)"
+            className="w-full bg-[var(--bg3)] border border-[var(--border)] rounded-xl px-3 py-2 text-sm text-[var(--text1)] placeholder:text-[var(--text3)] focus:border-[var(--gold2)] outline-none"
+          />
+          <button
+            className="px-4 py-1.5 rounded-lg bg-[var(--gold)] text-[var(--bg0)] text-sm font-semibold hover:bg-[var(--gold2)] transition-colors"
+            onClick={submitMedia}
+          >Post</button>
+        </div>
+      )}
+
+      {/* Text composer */}
+      {statusComposerOpen && !pendingFile && (
         <div className="px-4 py-3 border-b border-[var(--border)] flex flex-col gap-3">
           <textarea
             value={statusText}
@@ -67,11 +120,11 @@ export default function StatusSidebar({
             />
             <label className="size-8 flex items-center justify-center rounded-lg bg-[var(--bg3)] text-[var(--text2)] hover:text-[var(--text1)] cursor-pointer transition-colors" title="Image">
               <Image className="size-4" />
-              <input type="file" accept="image/*" hidden onChange={e => { e.target.files[0] && uploadStatusMedia(e.target.files[0], 'image'); setStatusComposerOpen(false) }} />
+              <input ref={imageRef} type="file" accept="image/*" hidden onChange={e => { selectMedia(e.target.files[0], 'image'); e.target.value = '' }} />
             </label>
             <label className="size-8 flex items-center justify-center rounded-lg bg-[var(--bg3)] text-[var(--text2)] hover:text-[var(--text1)] cursor-pointer transition-colors" title="Video">
               <Video className="size-4" />
-              <input type="file" accept="video/*" hidden onChange={e => { e.target.files[0] && uploadStatusMedia(e.target.files[0], 'video'); setStatusComposerOpen(false) }} />
+              <input ref={videoRef} type="file" accept="video/*" hidden onChange={e => { selectMedia(e.target.files[0], 'video'); e.target.value = '' }} />
             </label>
             <button
               className="ml-auto px-4 py-1.5 rounded-lg bg-[var(--gold)] text-[var(--bg0)] text-sm font-semibold disabled:opacity-40 hover:bg-[var(--gold2)] transition-colors"
@@ -79,32 +132,6 @@ export default function StatusSidebar({
               disabled={!statusText.trim()}
             >Post</button>
           </div>
-        </div>
-      )}
-
-      {statusMine.length > 0 && (
-        <div className="my-stories-strip">
-          {statusMine.map((status, index) => (
-            <div
-              key={status.id}
-              className="my-story-chip"
-              style={{ background: status.bg_color || '#1e1e21' }}
-            >
-              <button
-                className="my-story-chip-open"
-                onClick={() => {
-                  setStoryViewerId(me?.id)
-                  setStoryViewerIndex(index)
-                }}
-              >
-                <span className="my-story-chip-label">{fmtTime(status.created_at)}</span>
-                {status.type === 'image' && <img src={status.media_url} alt="" />}
-                {status.type === 'text' && <span className="my-story-chip-text">{status.content?.slice(0, 28)}</span>}
-                <span className="my-story-chip-views">{status.view_count ?? 0} views</span>
-              </button>
-              <button className="my-story-thumb-del" onClick={() => deleteStatus(status.id)} title="Delete">×</button>
-            </div>
-          ))}
         </div>
       )}
 
@@ -133,7 +160,7 @@ export default function StatusSidebar({
         )
       })}
 
-      {statusFeed.length === 0 && !statusComposerOpen && (
+      {statusFeed.length === 0 && !statusComposerOpen && !pendingFile && (
         <div className="empty-convs status-empty">No recent updates from contacts.</div>
       )}
     </div>

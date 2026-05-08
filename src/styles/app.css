@@ -931,15 +931,15 @@ a { color: inherit; }
 }
 
 .call-bubble {
-  width: 100%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-radius: 16px;
   background: var(--bg2);
   border: 1px solid var(--border);
   text-align: left;
+  max-width: 260px;
 }
 
 .mine .call-bubble {
@@ -2022,8 +2022,7 @@ a { color: inherit; }
 
   .sidebar-tabs {
     padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
-    position: sticky;
-    bottom: 0;
+    flex-shrink: 0;
     z-index: 2;
     background: rgba(17,17,20,.96);
     backdrop-filter: blur(16px);
