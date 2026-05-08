@@ -25,6 +25,11 @@ function fmtDate(iso) {
   if (!iso) return ''
   return new Date(iso).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })
 }
+function fmtDuration(secs) {
+  const m = Math.floor(secs / 60).toString().padStart(2, '0')
+  const s = (secs % 60).toString().padStart(2, '0')
+  return `${m}:${s}`
+}
 function initial(name) { return (name || '?').trim()[0]?.toUpperCase() ?? '?' }
 
 function Icon({ children, title }) {
@@ -100,6 +105,50 @@ function BlockIcon() {
   return <Icon><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M7.2 16.8 16.8 7.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
 }
 
+function MicIcon() {
+  return <Icon title="Mute"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M7 12a5 5 0 0 0 10 0M12 17v4M9 21h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
+}
+
+function MicOffIcon() {
+  return <Icon title="Unmute"><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V6a3 3 0 0 0-5.94-.6M17 16.95A7 7 0 0 1 5 12M19 12a7 7 0 0 0-.11-1.23M12 19v2M9 22h6M4 4l16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" /></Icon>
+}
+
+function SpeakerIcon() {
+  return <Icon title="Speaker"><path d="M11 5 6 9H3v6h3l5 4V5z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" /></Icon>
+}
+
+// Segmented story ring — drawn as overlapping circle arcs
+function StoryRing({ count, viewedCount, size = 50 }) {
+  const stroke = 2.5
+  const r = (size - stroke * 2) / 2
+  const cx = size / 2
+  const cy = size / 2
+  const circumference = 2 * Math.PI * r
+  const gap = count > 1 ? 4 : 0
+  const segLen = (circumference - gap * count) / count
+  return (
+    <svg
+      width={size} height={size}
+      className="story-ring-svg"
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <circle
+          key={i}
+          cx={cx} cy={cy} r={r}
+          fill="none"
+          stroke={i < viewedCount ? 'var(--border2)' : 'var(--gold)'}
+          strokeWidth={stroke}
+          strokeDasharray={`${segLen} ${circumference - segLen}`}
+          strokeDashoffset={-(segLen + gap) * i}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${cx} ${cy})`}
+        />
+      ))}
+    </svg>
+  )
+}
+
 function DeleteIcon() {
   return <Icon><path d="M6.5 7.5h11M9 7.5V6h6v1.5M8.5 7.5l.6 9h5.8l.6-9" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M10 10v4M14 10v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></Icon>
 }
@@ -147,7 +196,6 @@ export default function App() {
   const [reactionPickerPos, setReactionPickerPos] = useState({ x: 0, y: 0 })
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [toast, setToast] = useState(null)
-  const [tabBar, setTabBar] = useState(null) // for mobile bottom tab bar state
 
   // WS
   const [wsState, setWsState] = useState('offline') // offline | connecting | connected
@@ -159,9 +207,9 @@ export default function App() {
   const [statusMine, setStatusMine] = useState([])
   const [statusText, setStatusText] = useState('')
   const [statusColor, setStatusColor] = useState('#1e1e21')
+  const [statusComposerOpen, setStatusComposerOpen] = useState(false)
   const [storyViewerId, setStoryViewerId] = useState(null) // userId of story being viewed
   const [storyViewerIndex, setStoryViewerIndex] = useState(0) // index in stories array
-  const [storyAutoAdvance, setStoryAutoAdvance] = useState(null) // timer ref
 
   // Calls history
   const [callsFeed, setCallsFeed] = useState([])
@@ -169,6 +217,8 @@ export default function App() {
 
   // Calls
   const [callState, setCallState] = useState({ active: false, incoming: null, callId: null, status: 'idle', peerUserId: null })
+  const [callMuted, setCallMuted] = useState(false)
+  const [callDuration, setCallDuration] = useState(0)
 
   // Settings
   const [focusProfile, setFocusProfile] = useState('normal')
@@ -189,11 +239,14 @@ export default function App() {
   const toastTimer = useRef(null)
   const typingOutTimer = useRef(null)
   const activeConvIdRef = useRef(activeConvId)
+  const callDurationTimer = useRef(null)
+  const statusFeedRef = useRef(statusFeed)
 
   // Keep refs in sync
   useEffect(() => { tokenRef.current = token; store.set('letta_token', token) }, [token])
   useEffect(() => { refreshRef.current = refreshTok; store.set('letta_refresh', refreshTok) }, [refreshTok])
   useEffect(() => { activeConvIdRef.current = activeConvId }, [activeConvId])
+  useEffect(() => { statusFeedRef.current = statusFeed }, [statusFeed])
 
   // ── API ────────────────────────────────────────────────────────────────────
   const api = useCallback(async (path, opts = {}, isRetry = false) => {
@@ -572,8 +625,18 @@ export default function App() {
     if (localStreamRef.current) { localStreamRef.current.getTracks().forEach(t => t.stop()); localStreamRef.current = null }
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null
     if (ringRef.current) { clearInterval(ringRef.current); ringRef.current = null }
+    if (callDurationTimer.current) { clearInterval(callDurationTimer.current); callDurationTimer.current = null }
     setCallState({ active: false, incoming: null, callId: null, status: 'idle', peerUserId: null })
+    setCallMuted(false)
+    setCallDuration(0)
   }, [])
+
+  const toggleMute = useCallback(() => {
+    if (!localStreamRef.current) return
+    const newMuted = !callMuted
+    localStreamRef.current.getAudioTracks().forEach(t => { t.enabled = !newMuted })
+    setCallMuted(newMuted)
+  }, [callMuted])
 
   // Ring tone for incoming calls
   useEffect(() => {
@@ -592,6 +655,44 @@ export default function App() {
     }
     beep(); ringRef.current = setInterval(beep, 2000)
   }, [callState.status])
+
+  // Call duration counter
+  useEffect(() => {
+    if (callState.status === 'connected') {
+      setCallDuration(0)
+      callDurationTimer.current = setInterval(() => setCallDuration(p => p + 1), 1000)
+    } else {
+      if (callDurationTimer.current) { clearInterval(callDurationTimer.current); callDurationTimer.current = null }
+    }
+    return () => { if (callDurationTimer.current) { clearInterval(callDurationTimer.current); callDurationTimer.current = null } }
+  }, [callState.status])
+
+  // Story auto-advance (5s per story, then next person, then close)
+  useEffect(() => {
+    if (!storyViewerId) return
+    // Mark current story as viewed
+    const feed = statusFeedRef.current
+    const group = feed.find(g => g.user_id === storyViewerId)
+    const story = group?.statuses?.[storyViewerIndex]
+    if (story?.id) viewStatus(story.id)
+    const timer = setTimeout(() => {
+      const currentFeed = statusFeedRef.current
+      const currentGroup = currentFeed.find(g => g.user_id === storyViewerId)
+      if (!currentGroup) { setStoryViewerId(null); return }
+      if (storyViewerIndex < currentGroup.statuses.length - 1) {
+        setStoryViewerIndex(storyViewerIndex + 1)
+      } else {
+        const gIdx = currentFeed.findIndex(g => g.user_id === storyViewerId)
+        if (gIdx >= 0 && gIdx < currentFeed.length - 1) {
+          setStoryViewerId(currentFeed[gIdx + 1].user_id)
+          setStoryViewerIndex(0)
+        } else {
+          setStoryViewerId(null)
+        }
+      }
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [storyViewerId, storyViewerIndex]) // eslint-disable-line
 
   const startCall = useCallback(async (calleeId) => {
     if (!activeConvId || !calleeId) return
@@ -814,6 +915,15 @@ export default function App() {
     return { peerId, name: peer?.display_name || 'Unknown user' }
   }, [convs, me?.id])
 
+  const callPeerDisplayName = useMemo(() => {
+    if (!callState.peerUserId) return 'Unknown'
+    for (const conv of convs) {
+      const peer = conv.members?.find(m => m.user_id === callState.peerUserId)
+      if (peer) return peer.display_name || 'Unknown'
+    }
+    return 'Unknown'
+  }, [callState.peerUserId, convs])
+
   const callBackUser = useCallback(async (userId) => {
     try {
       const conv = await api('/conversations/direct', { method: 'POST', body: JSON.stringify({ other_user_id: userId }) })
@@ -996,23 +1106,101 @@ export default function App() {
 
           {workspace === 'status' && (
             <div className="status-sidebar">
-              <div className="sidebar-search">
-                <input placeholder="Search statuses…" />
-              </div>
-              <button className="new-status-btn" onClick={() => setWorkspace('status')}>
-                <div className="status-bubble-avatar mine">{initial(me?.display_name)}</div>
-                <div className="new-status-label">Post status</div>
+              {/* My status row */}
+              <button className="story-list-row my-story-row"
+                onClick={() => setStatusComposerOpen(p => !p)}>
+                <div className="story-list-avatar-wrap">
+                  <div className="story-list-avatar mine">{initial(me?.display_name)}</div>
+                  {statusMine.length > 0 && (
+                    <StoryRing count={statusMine.length} viewedCount={0} size={50} />
+                  )}
+                  <span className="story-add-badge">+</span>
+                </div>
+                <div className="story-list-info">
+                  <div className="story-list-name">My status</div>
+                  <div className="story-list-sub">
+                    {statusMine.length > 0
+                      ? `${statusMine.length} update${statusMine.length > 1 ? 's' : ''} · tap to add`
+                      : 'Add to my status'}
+                  </div>
+                </div>
               </button>
-              <div className="status-bubbles">
-                {statusFeed.map(group => (
-                  <button key={group.user_id} className={`status-bubble ${group.all_viewed ? 'viewed' : 'unviewed'}`}
-                    onClick={() => { setStoryViewerId(group.user_id); setStoryViewerIndex(0) }}>
-                    <div className="status-bubble-avatar">{initial(group.display_name)}</div>
-                    {!group.all_viewed && <span className="status-bubble-badge" />}
-                    <div className="status-bubble-name">{group.display_name}</div>
-                  </button>
-                ))}
-              </div>
+
+              {/* Inline compose */}
+              {statusComposerOpen && (
+                <div className="status-inline-compose">
+                  <textarea
+                    value={statusText}
+                    onChange={e => setStatusText(e.target.value)}
+                    placeholder="What's on your mind?"
+                    rows={3}
+                  />
+                  <div className="compose-actions-row">
+                    <input type="color" value={statusColor} onChange={e => setStatusColor(e.target.value)} title="Background color" />
+                    <label className="attach-btn compact" title="Image">
+                      <ImageIcon />
+                      <input type="file" accept="image/*" hidden onChange={e => { e.target.files[0] && uploadStatusMedia(e.target.files[0], 'image'); setStatusComposerOpen(false) }} />
+                    </label>
+                    <label className="attach-btn compact" title="Video">
+                      <VideoIcon />
+                      <input type="file" accept="video/*" hidden onChange={e => { e.target.files[0] && uploadStatusMedia(e.target.files[0], 'video'); setStatusComposerOpen(false) }} />
+                    </label>
+                    <button className="status-post-btn" onClick={() => { postStatus(); setStatusComposerOpen(false) }} disabled={!statusText.trim()}>Post</button>
+                  </div>
+                </div>
+              )}
+
+              {/* My stories thumbnails */}
+              {statusMine.length > 0 && (
+                <div className="my-stories-strip">
+                  {statusMine.map(s => (
+                    <div key={s.id} className="my-story-thumb"
+                      style={{ background: s.bg_color || '#1e1e21' }}
+                      onClick={() => { setStoryViewerId(me?.id); setStoryViewerIndex(statusMine.indexOf(s)) }}>
+                      {s.type === 'image' && <img src={s.media_url} alt="" />}
+                      {s.type === 'text' && <span>{s.content?.slice(0, 30)}</span>}
+                      <button className="my-story-thumb-del" onClick={e => { e.stopPropagation(); deleteStatus(s.id) }} title="Delete">×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Recent updates */}
+              {statusFeed.length > 0 && (
+                <>
+                  <div className="story-section-label">Recent updates</div>
+                  {statusFeed.map(group => {
+                    const viewedCount = group.statuses.filter(s => s.viewed).length
+                    const latest = group.statuses[group.statuses.length - 1]
+                    return (
+                      <button key={group.user_id}
+                        className={`story-list-row ${group.all_viewed ? 'viewed' : ''}`}
+                        onClick={() => { setStoryViewerId(group.user_id); setStoryViewerIndex(0) }}>
+                        <div className="story-list-avatar-wrap">
+                          <div className={`story-list-avatar ${group.all_viewed ? 'viewed' : ''}`}>
+                            {initial(group.display_name)}
+                          </div>
+                          <StoryRing
+                            count={group.statuses.length}
+                            viewedCount={viewedCount}
+                            size={50}
+                          />
+                        </div>
+                        <div className="story-list-info">
+                          <div className="story-list-name">{group.display_name}</div>
+                          <div className="story-list-sub">{fmtTime(latest?.created_at)}</div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </>
+              )}
+
+              {statusFeed.length === 0 && !statusComposerOpen && (
+                <div className="empty-convs" style={{ marginTop: 12 }}>
+                  No recent updates from contacts.
+                </div>
+              )}
             </div>
           )}
 
@@ -1132,43 +1320,75 @@ export default function App() {
       </aside>
 
       {/* ── Story Carousel Viewer ── */}
-      {storyViewerId && (
-        <div className="story-viewer">
-          <button className="story-close" onClick={() => setStoryViewerId(null)}><CloseIcon /></button>
-          {statusFeed.find(g => g.user_id === storyViewerId) && (
-            (() => {
-              const group = statusFeed.find(g => g.user_id === storyViewerId)
-              const story = group.statuses[storyViewerIndex]
-              if (!story) return null
-              return (
-                <div className="story-viewer-inner">
-                  <div className="story-header">
-                    <div className="story-avatar">{initial(group.display_name)}</div>
-                    <div className="story-info">
-                      <div className="story-name">{group.display_name}</div>
-                      <div className="story-time">{fmtTime(story.created_at)}</div>
-                    </div>
-                  </div>
-                  <div className="story-content" style={{ '--sbg': story.bg_color || '#1e1e21' }}>
-                    {story.type === 'image' && <img src={story.media_url} alt="" />}
-                    {story.type === 'video' && <video src={story.media_url} autoPlay muted />}
-                    {story.type === 'text' && <div className="story-text">{story.content}</div>}
-                  </div>
-                  <div className="story-progress">
-                    {group.statuses.map((_, i) => (
-                      <div key={i} className={`progress-bar ${i < storyViewerIndex ? 'done' : i === storyViewerIndex ? 'active' : ''}`} />
-                    ))}
-                  </div>
-                  <div className="story-nav">
-                    <button className="nav-prev" onClick={() => storyViewerIndex > 0 && setStoryViewerIndex(storyViewerIndex - 1)} />
-                    <button className="nav-next" onClick={() => storyViewerIndex < group.statuses.length - 1 && setStoryViewerIndex(storyViewerIndex + 1)} />
-                  </div>
-                </div>
-              )
-            })()
-          )}
-        </div>
-      )}
+      {storyViewerId && (() => {
+        const isMine = storyViewerId === me?.id
+        const group = isMine
+          ? { user_id: me.id, display_name: me.display_name, statuses: statusMine }
+          : statusFeed.find(g => g.user_id === storyViewerId)
+        const story = group?.statuses?.[storyViewerIndex]
+        if (!group || !story) return null
+        return (
+          <div className="story-viewer">
+            {/* Progress bars */}
+            <div className="story-progress">
+              {group.statuses.map((_, i) => (
+                <div
+                  key={i === storyViewerIndex ? `active-${storyViewerIndex}` : i}
+                  className={`progress-bar ${i < storyViewerIndex ? 'done' : i === storyViewerIndex ? 'active' : ''}`}
+                />
+              ))}
+            </div>
+
+            {/* Header */}
+            <div className="story-header">
+              <div className="story-avatar">{initial(group.display_name)}</div>
+              <div className="story-info">
+                <div className="story-name">{group.display_name}</div>
+                <div className="story-time">{fmtTime(story.created_at)}</div>
+              </div>
+              {isMine && (
+                <button className="story-delete-btn" onClick={() => deleteStatus(story.id)} title="Delete">
+                  <DeleteIcon />
+                </button>
+              )}
+            </div>
+
+            {/* Content */}
+            <div className="story-content" style={{ '--sbg': story.bg_color || '#1e1e21' }}>
+              {story.type === 'image' && <img src={story.media_url} alt="" />}
+              {story.type === 'video' && <video src={story.media_url} autoPlay muted playsInline />}
+              {story.type === 'text' && <div className="story-text">{story.content}</div>}
+            </div>
+
+            {/* Tap areas to navigate */}
+            <div className="story-nav">
+              <button className="nav-prev" onClick={() => {
+                if (storyViewerIndex > 0) {
+                  setStoryViewerIndex(storyViewerIndex - 1)
+                } else {
+                  const feed = statusFeedRef.current
+                  const gIdx = isMine ? -1 : feed.findIndex(g => g.user_id === storyViewerId)
+                  if (gIdx > 0) { setStoryViewerId(feed[gIdx - 1].user_id); setStoryViewerIndex(0) }
+                }
+              }} />
+              <button className="nav-next" onClick={() => {
+                const feed = statusFeedRef.current
+                const currentGroup = isMine ? { statuses: statusMine } : feed.find(g => g.user_id === storyViewerId)
+                if (!currentGroup) return
+                if (storyViewerIndex < currentGroup.statuses.length - 1) {
+                  setStoryViewerIndex(storyViewerIndex + 1)
+                } else {
+                  const gIdx = isMine ? -1 : feed.findIndex(g => g.user_id === storyViewerId)
+                  if (gIdx >= 0 && gIdx < feed.length - 1) { setStoryViewerId(feed[gIdx + 1].user_id); setStoryViewerIndex(0) }
+                  else setStoryViewerId(null)
+                }
+              }} />
+            </div>
+
+            <button className="story-close" onClick={() => setStoryViewerId(null)}><CloseIcon /></button>
+          </div>
+        )
+      })()}
 
 
       {/* ── Main workspace ── */}
@@ -1279,65 +1499,11 @@ export default function App() {
       )}
 
       {workspace === 'status' && (
-        <main className="space-pane">
-          <div className="space-head">
-            <h2>Status Updates</h2>
-          </div>
-          <div className="space-content status-space">
-            <section className="status-composer-section">
-              <div className="status-composer-header">Share your story</div>
-              <div className="status-composer">
-                <textarea value={statusText} onChange={e => setStatusText(e.target.value)} placeholder="What's on your mind?" />
-                <div className="status-composer-row">
-                  <input type="color" value={statusColor} onChange={e => setStatusColor(e.target.value)} title="Background color" />
-                  <label className="status-media-btn" title="Image"><ImageIcon /><input type="file" accept="image/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'image')} /></label>
-                  <label className="status-media-btn" title="Video"><VideoIcon /><input type="file" accept="video/*" hidden onChange={e => e.target.files[0] && uploadStatusMedia(e.target.files[0], 'video')} /></label>
-                  <button className="status-post-btn" onClick={postStatus} disabled={!statusText.trim()}>Post</button>
-                </div>
-              </div>
-              {statusMine.length > 0 && (
-                <div className="my-status-grid">
-                  <div className="my-status-header">Your stories</div>
-                  <div className="status-grid">
-                    {statusMine.map(s => (
-                      <div key={s.id} className="status-item" style={{ '--sbg': s.bg_color || '#1e1e21' }}>
-                        {s.type === 'image' && <img src={s.media_url} alt="" />}
-                        {s.type === 'video' && <video src={s.media_url} />}
-                        {s.type === 'text' && <div className="status-text">{s.content}</div>}
-                        <div className="status-meta">
-                          <span>{s.view_count ?? 0} views</span>
-                          <button className="status-delete" onClick={() => deleteStatus(s.id)}><DeleteIcon /></button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </section>
-
-            <section className="status-stories-section">
-              <div className="status-stories-header">Recent stories</div>
-              {statusFeed.length === 0 && (
-                <div className="empty-convs">No stories yet. Follow contacts to see their updates.</div>
-              )}
-              {statusFeed.length > 0 && (
-                <div className="story-bubbles-grid">
-                  {statusFeed.map(group => (
-                    <button key={group.user_id} className={`story-bubble-container ${group.all_viewed ? 'viewed' : 'unviewed'}`}
-                      onClick={() => { setStoryViewerId(group.user_id); setStoryViewerIndex(0) }}>
-                      <div className="story-bubble">
-                        {group.statuses[0]?.type === 'image' && <img src={group.statuses[0]?.media_url} alt="" />}
-                        {group.statuses[0]?.type === 'video' && <div className="video-placeholder">🎬</div>}
-                        {group.statuses[0]?.type === 'text' && <div className="text-placeholder">{group.statuses[0]?.content?.substring(0, 20)}</div>}
-                        {!group.all_viewed && <span className="story-unviewed-ring" />}
-                      </div>
-                      <div className="story-bubble-name">{group.display_name}</div>
-                      <div className="story-bubble-count">{group.statuses.length}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </section>
+        <main className="space-pane status-welcome">
+          <div className="status-welcome-inner">
+            <div className="empty-icon"><StatusIcon /></div>
+            <div className="empty-title">Status</div>
+            <div className="empty-sub">Select someone's update to view it, or tap your status on the left to add one.</div>
           </div>
         </main>
       )}
@@ -1440,15 +1606,37 @@ export default function App() {
         </div>
       )}
 
-      {/* Active call bar */}
+      {/* ── Active call fullscreen ── */}
       {callState.active && callState.status !== 'idle' && callState.status !== 'ringing' && (
-        <div className="call-bar">
-          <span className="call-bar-status">
-            {callState.status === 'calling' ? 'Calling…' :
-              callState.status === 'connected' ? 'Call connected' :
-                callState.status === 'reconnecting' ? 'Reconnecting…' : callState.status}
-          </span>
-          <button className="call-bar-end" onClick={endCall}>End</button>
+        <div className="call-fullscreen">
+          <div className="call-fs-bg" />
+          <div className="call-fs-body">
+            <div className="call-fs-avatar">{initial(callPeerDisplayName)}</div>
+            <div className="call-fs-name">{callPeerDisplayName}</div>
+            <div className="call-fs-status">
+              {callState.status === 'calling'
+                ? 'Calling…'
+                : callState.status === 'connected'
+                  ? fmtDuration(callDuration)
+                  : 'Connecting…'}
+            </div>
+            <div className="call-fs-controls">
+              <div className="call-ctrl-group">
+                <button className={`call-ctrl-btn ${callMuted ? 'active' : ''}`} onClick={toggleMute}>
+                  {callMuted ? <MicOffIcon /> : <MicIcon />}
+                  <span>{callMuted ? 'Unmute' : 'Mute'}</span>
+                </button>
+                <button className="call-ctrl-btn end" onClick={endCall}>
+                  <CallEndIcon />
+                  <span>End call</span>
+                </button>
+                <button className="call-ctrl-btn">
+                  <SpeakerIcon />
+                  <span>Speaker</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
