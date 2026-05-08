@@ -25,6 +25,8 @@ import {
   StatusIcon,
 } from './components/ui/Icons'
 import './styles/app.css'
+import * as ContextMenuPrimitive from '@radix-ui/react-context-menu'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const API = 'https://api.letta.mizzenmast.dev'
@@ -93,7 +95,6 @@ export default function App() {
   const [groupName, setGroupName] = useState('')
   const [selectedUsers, setSelectedUsers] = useState([])
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
-  const [messageMenu, setMessageMenu] = useState(null) // { msgId, x, y }
   const [replyTarget, setReplyTarget] = useState(null)
   const [redialPrompt, setRedialPrompt] = useState(null)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -720,7 +721,6 @@ export default function App() {
 
   // ── Messaging actions ──────────────────────────────────────────────────────
   const reactToMessage = useCallback(async (msgId, emoji) => {
-    setMessageMenu(null)
     try { await api(`/messages/${msgId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) }) }
     catch (e) { showToast(e.message, 'error') }
   }, [api, showToast])
@@ -849,16 +849,6 @@ export default function App() {
     return () => window.removeEventListener('pointerdown', handler)
   }, [showHeaderMenu])
 
-  // Close message menu on outside click
-  useEffect(() => {
-    if (!messageMenu) return
-    const handler = e => {
-      if (!e.target.closest('.message-menu-popup')) setMessageMenu(null)
-    }
-    window.addEventListener('pointerdown', handler)
-    return () => window.removeEventListener('pointerdown', handler)
-  }, [messageMenu])
-
   // ── Computed values ────────────────────────────────────────────────────────
   const activeConv = useMemo(() => convs.find(c => c.id === activeConvId) || null, [convs, activeConvId])
   const activeMsgs = msgsByConv[activeConvId] || []
@@ -931,11 +921,6 @@ export default function App() {
   const promptReply = useCallback((msg) => {
     setReplyTarget(msg)
     setMessageMenu(null)
-  }, [])
-
-  const openMessageMenu = useCallback((event, msgId) => {
-    event.preventDefault()
-    setMessageMenu({ msgId, x: event.clientX, y: event.clientY })
   }, [])
 
   const callMeta = useCallback((call) => {
@@ -1013,31 +998,70 @@ export default function App() {
       <div key={msg.id}>
         {showDate && <div className="date-pill">{fmtDate(msg.created_at)}</div>}
         <div className={`msg-row ${mine ? 'mine' : 'theirs'} ${isOpt ? 'optimistic' : ''}`}>
-          <div
-            className="msg-bubble-wrap"
-            onContextMenu={e => openMessageMenu(e, msg.id)}
-            onDoubleClick={() => promptReply(msg)}
-          >
-            {senderName && <div className="msg-sender">{senderName}</div>}
-            <div className="msg-bubble">
-              {repliedMsg && (
-                <button className="msg-reply-ref" onClick={() => setReplyTarget(repliedMsg)}>
-                  <span className="msg-reply-label">Replying to</span>
-                  <span className="msg-reply-snippet">{repliedMsg.content || repliedMsg.type || 'Attachment'}</span>
-                </button>
-              )}
-              {body}
-            </div>
-            {reactions && (
-              <div className="msg-reactions">
-                {Object.entries(msg.reactions).map(([emoji, count]) => (
-                  <button key={emoji} className="rxn-pill" onClick={() => reactToMessage(msg.id, emoji)}>
-                    {emoji} <span>{count}</span>
-                  </button>
-                ))}
+          <ContextMenuPrimitive.Root>
+            <ContextMenuPrimitive.Trigger asChild>
+              <div className="msg-bubble-wrap" onDoubleClick={() => promptReply(msg)}>
+                {senderName && <div className="msg-sender">{senderName}</div>}
+                <div className="msg-bubble">
+                  {repliedMsg && (
+                    <button className="msg-reply-ref" onClick={() => setReplyTarget(repliedMsg)}>
+                      <span className="msg-reply-label">Replying to</span>
+                      <span className="msg-reply-snippet">{repliedMsg.content || repliedMsg.type || 'Attachment'}</span>
+                    </button>
+                  )}
+                  {body}
+                </div>
+                {reactions && (
+                  <div className="msg-reactions">
+                    {Object.entries(msg.reactions).map(([emoji, count]) => (
+                      <button key={emoji} className="rxn-pill" onClick={() => reactToMessage(msg.id, emoji)}>
+                        {emoji} <span>{count}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </ContextMenuPrimitive.Trigger>
+            <ContextMenuPrimitive.Portal>
+              <ContextMenuPrimitive.Content className="z-[220] min-w-[210px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg2)] p-1 shadow-2xl">
+                <div className="flex gap-1 border-b border-[var(--border)] px-2 py-2 mb-1">
+                  {QUICK_EMOJIS.map(e => (
+                    <ContextMenuPrimitive.Item key={e} asChild onSelect={() => reactToMessage(msg.id, e)}>
+                      <button className="text-base leading-none hover:scale-125 transition-transform p-1 rounded outline-none">{e}</button>
+                    </ContextMenuPrimitive.Item>
+                  ))}
+                </div>
+                <ContextMenuPrimitive.Item
+                  className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[var(--text2)] data-[highlighted]:bg-[var(--bg3)] data-[highlighted]:text-[var(--text1)] outline-none cursor-pointer select-none"
+                  onSelect={() => promptReply(msg)}
+                >
+                  <ReplyIcon className="size-4" /> Reply
+                </ContextMenuPrimitive.Item>
+                {!msg.deleted_at && msg.content && (
+                  <ContextMenuPrimitive.Item
+                    className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[var(--text2)] data-[highlighted]:bg-[var(--bg3)] data-[highlighted]:text-[var(--text1)] outline-none cursor-pointer select-none"
+                    onSelect={() => copyMessage(msg)}
+                  >
+                    <CopyIcon className="size-4" /> Copy
+                  </ContextMenuPrimitive.Item>
+                )}
+                <ContextMenuPrimitive.Item
+                  className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[var(--text2)] data-[highlighted]:bg-[var(--bg3)] data-[highlighted]:text-[var(--text1)] outline-none cursor-pointer select-none"
+                  onSelect={() => pinMessage(msg.id)}
+                >
+                  <PinActionIcon className="size-4" /> Pin
+                </ContextMenuPrimitive.Item>
+                {mine && !msg.deleted_at && (
+                  <ContextMenuPrimitive.Item
+                    className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[var(--red)] data-[highlighted]:bg-[var(--bg3)] outline-none cursor-pointer select-none"
+                    onSelect={() => deleteMessage(msg.id)}
+                  >
+                    <DeleteIcon className="size-4" /> Delete
+                  </ContextMenuPrimitive.Item>
+                )}
+              </ContextMenuPrimitive.Content>
+            </ContextMenuPrimitive.Portal>
+          </ContextMenuPrimitive.Root>
           <div className="msg-time">{fmtTime(msg.created_at)}{mine && (isOpt ? ' ·' : ' ✓')}</div>
         </div>
       </div>
@@ -1525,42 +1549,27 @@ export default function App() {
         </main>
       )}
 
-      {workspace === 'chats' && messageMenu && (
-        <div className="message-menu-popup" style={{ left: messageMenu.x, top: messageMenu.y }}>
-          <div className="message-menu-section reactions">
-            {QUICK_EMOJIS.map(e => (
-              <button key={e} onClick={() => reactToMessage(messageMenu.msgId, e)}>{e}</button>
-            ))}
-          </div>
-          <div className="message-menu-section actions">
-            {(() => {
-              const msg = activeMsgMap[String(messageMenu.msgId)]
-              if (!msg) return null
-              return (
-                <>
-                  <button onClick={() => promptReply(msg)}><ReplyIcon /> Reply</button>
-                  <button onClick={() => { copyMessage(msg); setMessageMenu(null) }}><CopyIcon /> Copy</button>
-                  <button onClick={() => { pinMessage(msg.id); setMessageMenu(null) }}><PinActionIcon /> Pin</button>
-                  <button onClick={() => { deleteMessage(msg.id); setMessageMenu(null) }} className="danger"><DeleteIcon /> Delete</button>
-                </>
-              )
-            })()}
-          </div>
-        </div>
-      )}
-
-      {redialPrompt && (
-        <div className="confirm-overlay" onClick={() => setRedialPrompt(null)}>
-          <div className="confirm-card" onClick={e => e.stopPropagation()}>
-            <div className="confirm-title">Call again?</div>
-            <div className="confirm-copy">Redial {redialPrompt.peerName} from this call event.</div>
-            <div className="confirm-actions">
-              <button className="confirm-btn ghost" onClick={() => setRedialPrompt(null)}>Cancel</button>
-              <button className="confirm-btn" onClick={() => { callBackUser(redialPrompt.peerId); setRedialPrompt(null) }}>Call</button>
+      <DialogPrimitive.Root open={!!redialPrompt} onOpenChange={open => !open && setRedialPrompt(null)}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-[225] bg-black/50 backdrop-blur-sm" />
+          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[226] w-[min(360px,calc(100vw-28px))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--bg2)] p-6 shadow-2xl outline-none">
+            <DialogPrimitive.Title className="font-serif text-2xl text-[var(--text1)]">Call again?</DialogPrimitive.Title>
+            <DialogPrimitive.Description className="mt-2 text-sm text-[var(--text2)]">
+              Redial {redialPrompt?.peerName} from this call event.
+            </DialogPrimitive.Description>
+            <div className="mt-5 flex gap-3">
+              <button
+                className="flex-1 h-11 rounded-xl border border-[var(--border)] bg-[var(--bg3)] text-sm text-[var(--text1)] hover:bg-[var(--bg4)] transition-colors"
+                onClick={() => setRedialPrompt(null)}
+              >Cancel</button>
+              <button
+                className="flex-1 h-11 rounded-xl bg-[var(--gold)] text-[var(--bg0)] text-sm font-semibold hover:bg-[var(--gold2)] transition-colors"
+                onClick={() => { callBackUser(redialPrompt.peerId); setRedialPrompt(null) }}
+              >Call</button>
             </div>
-          </div>
-        </div>
-      )}
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
 
       {/* ── Incoming call overlay ── */}
       {callState.status === 'ringing' && callState.incoming && (

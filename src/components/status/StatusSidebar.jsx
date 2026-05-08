@@ -1,5 +1,6 @@
 import React from 'react'
-import { ImageIcon, VideoIcon, StoryRing } from '../ui/Icons'
+import { Image, Video } from 'lucide-react'
+import { StoryRing } from '../ui/Icons'
 
 export default function StatusSidebar({
   deleteStatus,
@@ -51,24 +52,32 @@ export default function StatusSidebar({
       </div>
 
       {statusComposerOpen && (
-        <div className="status-inline-compose">
+        <div className="px-4 py-3 border-b border-[var(--border)] flex flex-col gap-3">
           <textarea
             value={statusText}
             onChange={e => setStatusText(e.target.value)}
             placeholder="What's on your mind?"
             rows={3}
+            className="w-full bg-[var(--bg3)] border border-[var(--border)] rounded-xl px-3 py-2.5 text-sm text-[var(--text1)] placeholder:text-[var(--text3)] resize-none focus:border-[var(--gold2)] outline-none"
           />
-          <div className="compose-actions-row">
-            <input type="color" value={statusColor} onChange={e => setStatusColor(e.target.value)} title="Background color" />
-            <label className="attach-btn compact" title="Image">
-              <ImageIcon />
+          <div className="flex items-center gap-2">
+            <input
+              type="color" value={statusColor} onChange={e => setStatusColor(e.target.value)}
+              className="size-8 rounded-lg cursor-pointer border-0 bg-transparent p-0" title="Background color"
+            />
+            <label className="size-8 flex items-center justify-center rounded-lg bg-[var(--bg3)] text-[var(--text2)] hover:text-[var(--text1)] cursor-pointer transition-colors" title="Image">
+              <Image className="size-4" />
               <input type="file" accept="image/*" hidden onChange={e => { e.target.files[0] && uploadStatusMedia(e.target.files[0], 'image'); setStatusComposerOpen(false) }} />
             </label>
-            <label className="attach-btn compact" title="Video">
-              <VideoIcon />
+            <label className="size-8 flex items-center justify-center rounded-lg bg-[var(--bg3)] text-[var(--text2)] hover:text-[var(--text1)] cursor-pointer transition-colors" title="Video">
+              <Video className="size-4" />
               <input type="file" accept="video/*" hidden onChange={e => { e.target.files[0] && uploadStatusMedia(e.target.files[0], 'video'); setStatusComposerOpen(false) }} />
             </label>
-            <button className="status-post-btn" onClick={() => { postStatus(); setStatusComposerOpen(false) }} disabled={!statusText.trim()}>Post</button>
+            <button
+              className="ml-auto px-4 py-1.5 rounded-lg bg-[var(--gold)] text-[var(--bg0)] text-sm font-semibold disabled:opacity-40 hover:bg-[var(--gold2)] transition-colors"
+              onClick={() => { postStatus(); setStatusComposerOpen(false) }}
+              disabled={!statusText.trim()}
+            >Post</button>
           </div>
         </div>
       )}
