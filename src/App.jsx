@@ -1,4 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { IncomingCallOverlay, ActiveCallScreen, PostCallScreen } from './components/overlays/CallScreens'
+import StoryViewer from './components/overlays/StoryViewer'
+import StatusSidebar from './components/status/StatusSidebar'
+import {
+  BellIcon,
+  BlockIcon,
+  CallEndIcon,
+  CallsIcon,
+  ClockIcon,
+  CloseIcon,
+  DeleteIcon,
+  MessagesIcon,
+  MuteIcon,
+  PaperclipIcon,
+  PollIcon,
+  SendIcon,
+  SettingsIcon,
+  StatusIcon,
+} from './components/ui/Icons'
 import './styles/app.css'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -32,130 +51,6 @@ function fmtDuration(secs) {
 }
 function initial(name) { return (name || '?').trim()[0]?.toUpperCase() ?? '?' }
 
-function Icon({ children, title }) {
-  return (
-    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" role={title ? 'img' : 'presentation'}>
-      {title ? <title>{title}</title> : null}
-      {children}
-    </svg>
-  )
-}
-
-function MessagesIcon() {
-  return <Icon><path d="M5 6h14v8H10l-5 4V6z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></Icon>
-}
-
-function StatusIcon() {
-  return <Icon><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M12 6.5v11M6.5 12h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
-}
-
-function CallsIcon() {
-  return <Icon><path d="M7.5 5.5c1.3 0 2.4.5 3.3 1.4l1.2 1.2c.4.4.4 1 0 1.4l-.8.8c-.2.2-.3.6-.2.9.4 1.1 1.4 2.2 2.5 2.6.3.1.7 0 .9-.2l.8-.8c.4-.4 1-.4 1.4 0l1.2 1.2c.9.9 1.4 2 1.4 3.3v1.1c0 .8-.6 1.5-1.4 1.6-1.1.1-2.7-.1-5-1-2.7-1.1-5.3-3.7-6.4-6.4-1-2.3-1.2-3.9-1-5 .1-.8.8-1.4 1.6-1.4h1.1z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" /></Icon>
-}
-
-function SettingsIcon() {
-  return <Icon><circle cx="12" cy="12" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></Icon>
-}
-
-function AddChatIcon() {
-  return <Icon><path d="M6 5.5h12v8H9l-3 2.6V5.5z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M15 8.5v4M13 10.5h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
-}
-
-function PaperclipIcon() {
-  return <Icon><path d="M9 12.5l5.8-5.8a3 3 0 1 1 4.2 4.2l-7.4 7.4a5 5 0 1 1-7.1-7.1l7.4-7.4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></Icon>
-}
-
-function PollIcon() {
-  return <Icon><path d="M6 17V7M11 17V10M16 17v-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M4.5 17.5h15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></Icon>
-}
-
-function SendIcon() {
-  return <Icon><path d="M4.5 11.5 19.5 4.5l-4 15-3.7-6.1-7.3-2z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" /></Icon>
-}
-
-function CloseIcon() {
-  return <Icon><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
-}
-
-function ImageIcon() {
-  return <Icon><rect x="4.5" y="5" width="15" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="M7 15l3.2-3.2 2.4 2.4 2.7-2.7 3.2 3.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" /><circle cx="9" cy="9" r="1.2" fill="currentColor" /></Icon>
-}
-
-function VideoIcon() {
-  return <Icon><rect x="4.5" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="M16.5 10.2 20 8.2v7.6l-3.5-2" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" /></Icon>
-}
-
-function CallEndIcon() {
-  return <Icon><path d="M7.5 6.5c1.3 0 2.4.5 3.3 1.4l1.2 1.2c.4.4.4 1 0 1.4l-.8.8c-.2.2-.3.6-.2.9.4 1.1 1.4 2.2 2.5 2.6.3.1.7 0 .9-.2l.8-.8c.4-.4 1-.4 1.4 0l1.2 1.2c.9.9 1.4 2 1.4 3.3v1.1c0 .8-.6 1.5-1.4 1.6-1.1.1-2.7-.1-5-1-2.7-1.1-5.3-3.7-6.4-6.4-1-2.3-1.2-3.9-1-5 .1-.8.8-1.4 1.6-1.4h1.1z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" /><path d="M18 6 6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
-}
-
-function MuteIcon() {
-  return <Icon><path d="M5.5 14V10.5h3l4-4v11l-4-4h-3z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M15 9.5a3.5 3.5 0 0 1 0 5M17.4 7.1a7 7 0 0 1 0 9.8" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></Icon>
-}
-
-function BellIcon() {
-  return <Icon><path d="M12 18a1.8 1.8 0 0 0 1.8-1.8h-3.6A1.8 1.8 0 0 0 12 18z" fill="currentColor" /><path d="M6.5 15.5h11l-1.2-1.9V10a4.3 4.3 0 1 0-8.6 0v3.6l-1.2 1.9z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></Icon>
-}
-
-function ClockIcon() {
-  return <Icon><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M12 8v4l2.7 1.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></Icon>
-}
-
-function BlockIcon() {
-  return <Icon><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M7.2 16.8 16.8 7.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
-}
-
-function MicIcon() {
-  return <Icon title="Mute"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M7 12a5 5 0 0 0 10 0M12 17v4M9 21h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
-}
-
-function MicOffIcon() {
-  return <Icon title="Unmute"><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V6a3 3 0 0 0-5.94-.6M17 16.95A7 7 0 0 1 5 12M19 12a7 7 0 0 0-.11-1.23M12 19v2M9 22h6M4 4l16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" /></Icon>
-}
-
-function SpeakerIcon() {
-  return <Icon title="Speaker"><path d="M11 5 6 9H3v6h3l5 4V5z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" /></Icon>
-}
-
-// Segmented story ring — drawn as overlapping circle arcs
-function StoryRing({ count, viewedCount, size = 50 }) {
-  const stroke = 2.5
-  const r = (size - stroke * 2) / 2
-  const cx = size / 2
-  const cy = size / 2
-  const circumference = 2 * Math.PI * r
-  const gap = count > 1 ? 4 : 0
-  const segLen = (circumference - gap * count) / count
-  return (
-    <svg
-      width={size} height={size}
-      className="story-ring-svg"
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
-    >
-      {Array.from({ length: count }).map((_, i) => (
-        <circle
-          key={i}
-          cx={cx} cy={cy} r={r}
-          fill="none"
-          stroke={i < viewedCount ? 'var(--border2)' : 'var(--gold)'}
-          strokeWidth={stroke}
-          strokeDasharray={`${segLen} ${circumference - segLen}`}
-          strokeDashoffset={-(segLen + gap) * i}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${cx} ${cy})`}
-        />
-      ))}
-    </svg>
-  )
-}
-
-function DeleteIcon() {
-  return <Icon><path d="M6.5 7.5h11M9 7.5V6h6v1.5M8.5 7.5l.6 9h5.8l.6-9" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M10 10v4M14 10v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></Icon>
-}
-
-function RingIcon() {
-  return <Icon><path d="M12 4.5v2.2M12 17.3v2.2M4.5 12h2.2M17.3 12h2.2M6.5 6.5l1.6 1.6M15.9 15.9l1.6 1.6M17.5 6.5l-1.6 1.6M7.6 15.9 6 17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.8" /></Icon>
-}
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
@@ -219,6 +114,7 @@ export default function App() {
   const [callState, setCallState] = useState({ active: false, incoming: null, callId: null, status: 'idle', peerUserId: null })
   const [callMuted, setCallMuted] = useState(false)
   const [callDuration, setCallDuration] = useState(0)
+  const [postCallSummary, setPostCallSummary] = useState(null)
 
   // Settings
   const [focusProfile, setFocusProfile] = useState('normal')
@@ -241,12 +137,17 @@ export default function App() {
   const activeConvIdRef = useRef(activeConvId)
   const callDurationTimer = useRef(null)
   const statusFeedRef = useRef(statusFeed)
+  const callStateRef = useRef(callState)
+  const callDurationRef = useRef(callDuration)
+  const callPeerNameRef = useRef('Unknown')
 
   // Keep refs in sync
   useEffect(() => { tokenRef.current = token; store.set('letta_token', token) }, [token])
   useEffect(() => { refreshRef.current = refreshTok; store.set('letta_refresh', refreshTok) }, [refreshTok])
   useEffect(() => { activeConvIdRef.current = activeConvId }, [activeConvId])
   useEffect(() => { statusFeedRef.current = statusFeed }, [statusFeed])
+  useEffect(() => { callStateRef.current = callState }, [callState])
+  useEffect(() => { callDurationRef.current = callDuration }, [callDuration])
 
   // ── API ────────────────────────────────────────────────────────────────────
   const api = useCallback(async (path, opts = {}, isRetry = false) => {
@@ -621,6 +522,17 @@ export default function App() {
 
   // ── Calls ──────────────────────────────────────────────────────────────────
   const teardownCall = useCallback(() => {
+    const currentCall = callStateRef.current
+    if (currentCall.active && currentCall.status !== 'idle' && currentCall.status !== 'ringing') {
+      const seconds = callDurationRef.current
+      setPostCallSummary({
+        peerName: callPeerNameRef.current,
+        peerUserId: currentCall.peerUserId,
+        duration: seconds,
+        durationLabel: seconds > 0 ? fmtDuration(seconds) : '00:00',
+        label: currentCall.status === 'connected' ? 'Completed call' : 'Call ended',
+      })
+    }
     if (peerRef.current) { peerRef.current.close(); peerRef.current = null }
     if (localStreamRef.current) { localStreamRef.current.getTracks().forEach(t => t.stop()); localStreamRef.current = null }
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null
@@ -638,23 +550,39 @@ export default function App() {
     setCallMuted(newMuted)
   }, [callMuted])
 
+  const playRingtoneBurst = useCallback(() => {
+    try {
+      const ctx = new AudioContext()
+      const times = [0, 0.18, 0.42]
+      const notes = [880, 1174, 1046]
+      notes.forEach((note, index) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = index === 1 ? 'triangle' : 'sine'
+        osc.frequency.value = note
+        gain.gain.value = 0.0001
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        const startAt = ctx.currentTime + times[index]
+        gain.gain.setValueAtTime(0.0001, startAt)
+        gain.gain.exponentialRampToValueAtTime(0.06, startAt + 0.02)
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.22)
+        osc.start(startAt)
+        osc.stop(startAt + 0.24)
+      })
+      setTimeout(() => ctx.close().catch(() => {}), 900)
+    } catch {}
+  }, [])
+
   // Ring tone for incoming calls
   useEffect(() => {
     if (callState.status !== 'ringing') {
       if (ringRef.current) { clearInterval(ringRef.current); ringRef.current = null }
       return
     }
-    const beep = () => {
-      try {
-        const ctx = new AudioContext()
-        const osc = ctx.createOscillator(); const gain = ctx.createGain()
-        osc.type = 'sine'; osc.frequency.value = 880; gain.gain.value = 0.06
-        osc.connect(gain); gain.connect(ctx.destination)
-        osc.start(); setTimeout(() => { osc.stop(); ctx.close() }, 200)
-      } catch {}
-    }
-    beep(); ringRef.current = setInterval(beep, 2000)
-  }, [callState.status])
+    playRingtoneBurst()
+    ringRef.current = setInterval(playRingtoneBurst, 2600)
+  }, [callState.status, playRingtoneBurst])
 
   // Call duration counter
   useEffect(() => {
@@ -670,19 +598,19 @@ export default function App() {
   // Story auto-advance (5s per story, then next person, then close)
   useEffect(() => {
     if (!storyViewerId) return
-    // Mark current story as viewed
+    const isMine = storyViewerId === me?.id
     const feed = statusFeedRef.current
-    const group = feed.find(g => g.user_id === storyViewerId)
+    const group = isMine ? { user_id: me?.id, statuses: statusMine } : feed.find(g => g.user_id === storyViewerId)
     const story = group?.statuses?.[storyViewerIndex]
-    if (story?.id) viewStatus(story.id)
+    if (!isMine && story?.id) viewStatus(story.id)
     const timer = setTimeout(() => {
       const currentFeed = statusFeedRef.current
-      const currentGroup = currentFeed.find(g => g.user_id === storyViewerId)
+      const currentGroup = isMine ? { statuses: statusMine } : currentFeed.find(g => g.user_id === storyViewerId)
       if (!currentGroup) { setStoryViewerId(null); return }
       if (storyViewerIndex < currentGroup.statuses.length - 1) {
         setStoryViewerIndex(storyViewerIndex + 1)
       } else {
-        const gIdx = currentFeed.findIndex(g => g.user_id === storyViewerId)
+        const gIdx = isMine ? -1 : currentFeed.findIndex(g => g.user_id === storyViewerId)
         if (gIdx >= 0 && gIdx < currentFeed.length - 1) {
           setStoryViewerId(currentFeed[gIdx + 1].user_id)
           setStoryViewerIndex(0)
@@ -692,12 +620,13 @@ export default function App() {
       }
     }, 5000)
     return () => clearTimeout(timer)
-  }, [storyViewerId, storyViewerIndex]) // eslint-disable-line
+  }, [storyViewerId, storyViewerIndex, me?.id, statusMine, viewStatus])
 
   const startCall = useCallback(async (calleeId) => {
     if (!activeConvId || !calleeId) return
     const callId = crypto.randomUUID()
     try {
+      setPostCallSummary(null)
       if (!remoteAudioInit.current) { remoteAudioRef.current.autoplay = true; remoteAudioInit.current = true }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
       localStreamRef.current = stream
@@ -721,6 +650,7 @@ export default function App() {
     if (!callState.callId || !callState.incoming?.sdp) return
     const peerUserId = callState.incoming.caller_id
     try {
+      setPostCallSummary(null)
       if (!remoteAudioInit.current) { remoteAudioRef.current.autoplay = true; remoteAudioInit.current = true }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
       localStreamRef.current = stream
@@ -924,6 +854,10 @@ export default function App() {
     return 'Unknown'
   }, [callState.peerUserId, convs])
 
+  useEffect(() => { callPeerNameRef.current = callPeerDisplayName }, [callPeerDisplayName])
+
+  const mobileSidebarVisible = mobileSidebarOpen || workspace !== 'chats' || !activeConvId
+
   const callBackUser = useCallback(async (userId) => {
     try {
       const conv = await api('/conversations/direct', { method: 'POST', body: JSON.stringify({ other_user_id: userId }) })
@@ -1050,10 +984,10 @@ export default function App() {
 
   // ── Main app ───────────────────────────────────────────────────────────────
   return (
-    <div className={`app-shell ${mobileSidebarOpen ? 'sidebar-open' : ''}`}>
+    <div className={`app-shell ${mobileSidebarVisible ? 'sidebar-open' : ''} ${workspace !== 'chats' ? 'mobile-workspace-open' : ''}`}>
 
       {/* Mobile overlay */}
-      {mobileSidebarOpen && <div className="mobile-overlay" onClick={() => setMobileSidebarOpen(false)} />}
+      {mobileSidebarOpen && workspace === 'chats' && <div className="mobile-overlay" onClick={() => setMobileSidebarOpen(false)} />}
 
       {/* ── Sidebar ── */}
       <aside className="sidebar">
@@ -1105,103 +1039,24 @@ export default function App() {
           )}
 
           {workspace === 'status' && (
-            <div className="status-sidebar">
-              {/* My status row */}
-              <button className="story-list-row my-story-row"
-                onClick={() => setStatusComposerOpen(p => !p)}>
-                <div className="story-list-avatar-wrap">
-                  <div className="story-list-avatar mine">{initial(me?.display_name)}</div>
-                  {statusMine.length > 0 && (
-                    <StoryRing count={statusMine.length} viewedCount={0} size={50} />
-                  )}
-                  <span className="story-add-badge">+</span>
-                </div>
-                <div className="story-list-info">
-                  <div className="story-list-name">My status</div>
-                  <div className="story-list-sub">
-                    {statusMine.length > 0
-                      ? `${statusMine.length} update${statusMine.length > 1 ? 's' : ''} · tap to add`
-                      : 'Add to my status'}
-                  </div>
-                </div>
-              </button>
-
-              {/* Inline compose */}
-              {statusComposerOpen && (
-                <div className="status-inline-compose">
-                  <textarea
-                    value={statusText}
-                    onChange={e => setStatusText(e.target.value)}
-                    placeholder="What's on your mind?"
-                    rows={3}
-                  />
-                  <div className="compose-actions-row">
-                    <input type="color" value={statusColor} onChange={e => setStatusColor(e.target.value)} title="Background color" />
-                    <label className="attach-btn compact" title="Image">
-                      <ImageIcon />
-                      <input type="file" accept="image/*" hidden onChange={e => { e.target.files[0] && uploadStatusMedia(e.target.files[0], 'image'); setStatusComposerOpen(false) }} />
-                    </label>
-                    <label className="attach-btn compact" title="Video">
-                      <VideoIcon />
-                      <input type="file" accept="video/*" hidden onChange={e => { e.target.files[0] && uploadStatusMedia(e.target.files[0], 'video'); setStatusComposerOpen(false) }} />
-                    </label>
-                    <button className="status-post-btn" onClick={() => { postStatus(); setStatusComposerOpen(false) }} disabled={!statusText.trim()}>Post</button>
-                  </div>
-                </div>
-              )}
-
-              {/* My stories thumbnails */}
-              {statusMine.length > 0 && (
-                <div className="my-stories-strip">
-                  {statusMine.map(s => (
-                    <div key={s.id} className="my-story-thumb"
-                      style={{ background: s.bg_color || '#1e1e21' }}
-                      onClick={() => { setStoryViewerId(me?.id); setStoryViewerIndex(statusMine.indexOf(s)) }}>
-                      {s.type === 'image' && <img src={s.media_url} alt="" />}
-                      {s.type === 'text' && <span>{s.content?.slice(0, 30)}</span>}
-                      <button className="my-story-thumb-del" onClick={e => { e.stopPropagation(); deleteStatus(s.id) }} title="Delete">×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Recent updates */}
-              {statusFeed.length > 0 && (
-                <>
-                  <div className="story-section-label">Recent updates</div>
-                  {statusFeed.map(group => {
-                    const viewedCount = group.statuses.filter(s => s.viewed).length
-                    const latest = group.statuses[group.statuses.length - 1]
-                    return (
-                      <button key={group.user_id}
-                        className={`story-list-row ${group.all_viewed ? 'viewed' : ''}`}
-                        onClick={() => { setStoryViewerId(group.user_id); setStoryViewerIndex(0) }}>
-                        <div className="story-list-avatar-wrap">
-                          <div className={`story-list-avatar ${group.all_viewed ? 'viewed' : ''}`}>
-                            {initial(group.display_name)}
-                          </div>
-                          <StoryRing
-                            count={group.statuses.length}
-                            viewedCount={viewedCount}
-                            size={50}
-                          />
-                        </div>
-                        <div className="story-list-info">
-                          <div className="story-list-name">{group.display_name}</div>
-                          <div className="story-list-sub">{fmtTime(latest?.created_at)}</div>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </>
-              )}
-
-              {statusFeed.length === 0 && !statusComposerOpen && (
-                <div className="empty-convs" style={{ marginTop: 12 }}>
-                  No recent updates from contacts.
-                </div>
-              )}
-            </div>
+            <StatusSidebar
+              deleteStatus={deleteStatus}
+              fmtTime={fmtTime}
+              initial={initial}
+              me={me}
+              postStatus={postStatus}
+              setStatusColor={setStatusColor}
+              setStatusComposerOpen={setStatusComposerOpen}
+              setStatusText={setStatusText}
+              setStoryViewerId={setStoryViewerId}
+              setStoryViewerIndex={setStoryViewerIndex}
+              statusColor={statusColor}
+              statusComposerOpen={statusComposerOpen}
+              statusFeed={statusFeed}
+              statusMine={statusMine}
+              statusText={statusText}
+              uploadStatusMedia={uploadStatusMedia}
+            />
           )}
 
           {workspace === 'calls' && (
@@ -1319,76 +1174,19 @@ export default function App() {
         </div>
       </aside>
 
-      {/* ── Story Carousel Viewer ── */}
-      {storyViewerId && (() => {
-        const isMine = storyViewerId === me?.id
-        const group = isMine
-          ? { user_id: me.id, display_name: me.display_name, statuses: statusMine }
-          : statusFeed.find(g => g.user_id === storyViewerId)
-        const story = group?.statuses?.[storyViewerIndex]
-        if (!group || !story) return null
-        return (
-          <div className="story-viewer">
-            {/* Progress bars */}
-            <div className="story-progress">
-              {group.statuses.map((_, i) => (
-                <div
-                  key={i === storyViewerIndex ? `active-${storyViewerIndex}` : i}
-                  className={`progress-bar ${i < storyViewerIndex ? 'done' : i === storyViewerIndex ? 'active' : ''}`}
-                />
-              ))}
-            </div>
-
-            {/* Header */}
-            <div className="story-header">
-              <div className="story-avatar">{initial(group.display_name)}</div>
-              <div className="story-info">
-                <div className="story-name">{group.display_name}</div>
-                <div className="story-time">{fmtTime(story.created_at)}</div>
-              </div>
-              {isMine && (
-                <button className="story-delete-btn" onClick={() => deleteStatus(story.id)} title="Delete">
-                  <DeleteIcon />
-                </button>
-              )}
-            </div>
-
-            {/* Content */}
-            <div className="story-content" style={{ '--sbg': story.bg_color || '#1e1e21' }}>
-              {story.type === 'image' && <img src={story.media_url} alt="" />}
-              {story.type === 'video' && <video src={story.media_url} autoPlay muted playsInline />}
-              {story.type === 'text' && <div className="story-text">{story.content}</div>}
-            </div>
-
-            {/* Tap areas to navigate */}
-            <div className="story-nav">
-              <button className="nav-prev" onClick={() => {
-                if (storyViewerIndex > 0) {
-                  setStoryViewerIndex(storyViewerIndex - 1)
-                } else {
-                  const feed = statusFeedRef.current
-                  const gIdx = isMine ? -1 : feed.findIndex(g => g.user_id === storyViewerId)
-                  if (gIdx > 0) { setStoryViewerId(feed[gIdx - 1].user_id); setStoryViewerIndex(0) }
-                }
-              }} />
-              <button className="nav-next" onClick={() => {
-                const feed = statusFeedRef.current
-                const currentGroup = isMine ? { statuses: statusMine } : feed.find(g => g.user_id === storyViewerId)
-                if (!currentGroup) return
-                if (storyViewerIndex < currentGroup.statuses.length - 1) {
-                  setStoryViewerIndex(storyViewerIndex + 1)
-                } else {
-                  const gIdx = isMine ? -1 : feed.findIndex(g => g.user_id === storyViewerId)
-                  if (gIdx >= 0 && gIdx < feed.length - 1) { setStoryViewerId(feed[gIdx + 1].user_id); setStoryViewerIndex(0) }
-                  else setStoryViewerId(null)
-                }
-              }} />
-            </div>
-
-            <button className="story-close" onClick={() => setStoryViewerId(null)}><CloseIcon /></button>
-          </div>
-        )
-      })()}
+      <StoryViewer
+        deleteStatus={deleteStatus}
+        fmtTime={fmtTime}
+        initial={initial}
+        me={me}
+        setStoryViewerId={setStoryViewerId}
+        setStoryViewerIndex={setStoryViewerIndex}
+        statusFeed={statusFeed}
+        statusFeedRef={statusFeedRef}
+        statusMine={statusMine}
+        storyViewerId={storyViewerId}
+        storyViewerIndex={storyViewerIndex}
+      />
 
 
       {/* ── Main workspace ── */}
@@ -1593,52 +1391,26 @@ export default function App() {
 
       {/* ── Incoming call overlay ── */}
       {callState.status === 'ringing' && callState.incoming && (
-        <div className="call-overlay">
-          <div className="call-card">
-            <div className="call-ring-anim"><RingIcon /></div>
-            <div className="call-title">Incoming call</div>
-            <div className="call-sub">Audio call</div>
-            <div className="call-btns">
-              <button className="call-decline" onClick={rejectCall}>Decline</button>
-              <button className="call-accept" onClick={answerCall}>Answer</button>
-            </div>
-          </div>
-        </div>
+        <IncomingCallOverlay answerCall={answerCall} rejectCall={rejectCall} />
       )}
 
-      {/* ── Active call fullscreen ── */}
       {callState.active && callState.status !== 'idle' && callState.status !== 'ringing' && (
-        <div className="call-fullscreen">
-          <div className="call-fs-bg" />
-          <div className="call-fs-body">
-            <div className="call-fs-avatar">{initial(callPeerDisplayName)}</div>
-            <div className="call-fs-name">{callPeerDisplayName}</div>
-            <div className="call-fs-status">
-              {callState.status === 'calling'
-                ? 'Calling…'
-                : callState.status === 'connected'
-                  ? fmtDuration(callDuration)
-                  : 'Connecting…'}
-            </div>
-            <div className="call-fs-controls">
-              <div className="call-ctrl-group">
-                <button className={`call-ctrl-btn ${callMuted ? 'active' : ''}`} onClick={toggleMute}>
-                  {callMuted ? <MicOffIcon /> : <MicIcon />}
-                  <span>{callMuted ? 'Unmute' : 'Mute'}</span>
-                </button>
-                <button className="call-ctrl-btn end" onClick={endCall}>
-                  <CallEndIcon />
-                  <span>End call</span>
-                </button>
-                <button className="call-ctrl-btn">
-                  <SpeakerIcon />
-                  <span>Speaker</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ActiveCallScreen
+          callDuration={callDuration}
+          callMuted={callMuted}
+          callPeerDisplayName={callPeerDisplayName}
+          callState={callState}
+          endCall={endCall}
+          fmtDuration={fmtDuration}
+          toggleMute={toggleMute}
+        />
       )}
+
+      <PostCallScreen
+        onCallAgain={callBackUser}
+        onClose={() => setPostCallSummary(null)}
+        summary={postCallSummary}
+      />
 
       {/* ── Toast ── */}
       {toast && (
