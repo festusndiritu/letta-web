@@ -9,11 +9,17 @@ import {
   CallsIcon,
   ClockIcon,
   CloseIcon,
+  CopyIcon,
   DeleteIcon,
+  IncomingCallIcon,
   MessagesIcon,
+  MissedCallIcon,
   MuteIcon,
+  OutgoingCallIcon,
   PaperclipIcon,
+  PinActionIcon,
   PollIcon,
+  ReplyIcon,
   SendIcon,
   SettingsIcon,
   StatusIcon,
@@ -87,8 +93,9 @@ export default function App() {
   const [groupName, setGroupName] = useState('')
   const [selectedUsers, setSelectedUsers] = useState([])
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
-  const [showReactionPicker, setShowReactionPicker] = useState(null) // msgId | null
-  const [reactionPickerPos, setReactionPickerPos] = useState({ x: 0, y: 0 })
+  const [messageMenu, setMessageMenu] = useState(null) // { msgId, x, y }
+  const [replyTarget, setReplyTarget] = useState(null)
+  const [redialPrompt, setRedialPrompt] = useState(null)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [toast, setToast] = useState(null)
 
@@ -327,6 +334,7 @@ export default function App() {
 
       case 'call.rejected':
       case 'call.ended':
+        loadCalls()
         teardownCall()
         break
 
@@ -487,19 +495,43 @@ export default function App() {
     if (composerMode === 'poll') {
       const options = pollOpts.split('\n').map(o => o.trim()).filter(Boolean)
       if (!pollQ.trim() || options.length < 2) { showToast('Poll needs a question and at least 2 options', 'error'); return }
-      sendWs('message.send', { conversation_id: activeConvId, type: 'poll', content: pollQ.trim(), poll_data: JSON.stringify({ question: pollQ.trim(), options, multiple_choice: false }) })
-      setPollQ(''); return
+      sendWs('message.send', {
+        conversation_id: activeConvId,
+        type: 'poll',
+        content: pollQ.trim(),
+        poll_data: JSON.stringify({ question: pollQ.trim(), options, multiple_choice: false }),
+        reply_to_id: replyTarget?.id || null,
+      })
+      setPollQ('')
+      setReplyTarget(null)
+      return
     }
 
     const content = draft.trim()
     if (!content) return
     const optimisticId = `tmp-${Date.now()}`
-    setMsgsByConv(prev => ({ ...prev, [activeConvId]: [...(prev[activeConvId] || []), { id: optimisticId, conversation_id: activeConvId, sender_id: me?.id, type: 'text', content, created_at: new Date().toISOString(), reactions: {} }] }))
+    setMsgsByConv(prev => ({
+      ...prev,
+      [activeConvId]: [
+        ...(prev[activeConvId] || []),
+        {
+          id: optimisticId,
+          conversation_id: activeConvId,
+          sender_id: me?.id,
+          type: 'text',
+          content,
+          created_at: new Date().toISOString(),
+          reactions: {},
+          reply_to_id: replyTarget?.id || null,
+        },
+      ],
+    }))
     setDraft('')
-    sendWs('message.send', { conversation_id: activeConvId, type: 'text', content })
+    sendWs('message.send', { conversation_id: activeConvId, type: 'text', content, reply_to_id: replyTarget?.id || null })
+    setReplyTarget(null)
     sendWs('typing.stop', { conversation_id: activeConvId })
     if (typingOutTimer.current) { clearTimeout(typingOutTimer.current); typingOutTimer.current = null }
-  }, [activeConvId, composerMode, draft, pollQ, pollOpts, me?.id, sendWs, showToast])
+  }, [activeConvId, composerMode, draft, pollQ, pollOpts, me?.id, replyTarget, sendWs, showToast])
 
   const onDraftChange = useCallback((val) => {
     setDraft(val)
@@ -516,9 +548,10 @@ export default function App() {
       const data = await api('/media/upload', { method: 'POST', body: form })
       const mime = data.mime_type || file.type || ''
       const type = mime.startsWith('image') ? 'image' : mime.startsWith('video') ? 'video' : mime.startsWith('audio') ? 'audio' : 'document'
-      sendWs('message.send', { conversation_id: activeConvId, type, content: null, media_url: data.url, media_mime: mime })
+      sendWs('message.send', { conversation_id: activeConvId, type, content: null, media_url: data.url, media_mime: mime, reply_to_id: replyTarget?.id || null })
+      setReplyTarget(null)
     } catch (e) { showToast('Upload failed: ' + e.message, 'error') }
-  }, [activeConvId, api, sendWs, showToast])
+  }, [activeConvId, api, replyTarget, sendWs, showToast])
 
   // ── Calls ──────────────────────────────────────────────────────────────────
   const teardownCall = useCallback(() => {
@@ -675,17 +708,19 @@ export default function App() {
 
   const rejectCall = useCallback(() => {
     if (callState.callId) sendWs('call.reject', { call_id: callState.callId })
+    loadCalls()
     teardownCall()
-  }, [callState.callId, sendWs, teardownCall])
+  }, [callState.callId, loadCalls, sendWs, teardownCall])
 
   const endCall = useCallback(() => {
     if (callState.callId) sendWs('call.end', { call_id: callState.callId })
+    loadCalls()
     teardownCall()
-  }, [callState.callId, sendWs, teardownCall])
+  }, [callState.callId, loadCalls, sendWs, teardownCall])
 
   // ── Messaging actions ──────────────────────────────────────────────────────
   const reactToMessage = useCallback(async (msgId, emoji) => {
-    setShowReactionPicker(null)
+    setMessageMenu(null)
     try { await api(`/messages/${msgId}/react`, { method: 'POST', body: JSON.stringify({ emoji }) }) }
     catch (e) { showToast(e.message, 'error') }
   }, [api, showToast])
@@ -814,23 +849,32 @@ export default function App() {
     return () => window.removeEventListener('pointerdown', handler)
   }, [showHeaderMenu])
 
-  // Close reaction picker on outside click
+  // Close message menu on outside click
   useEffect(() => {
-    if (!showReactionPicker) return
+    if (!messageMenu) return
     const handler = e => {
-      if (!e.target.closest('.reaction-picker-popup') && !e.target.closest('.msg-long-press'))
-        setShowReactionPicker(null)
+      if (!e.target.closest('.message-menu-popup')) setMessageMenu(null)
     }
     window.addEventListener('pointerdown', handler)
     return () => window.removeEventListener('pointerdown', handler)
-  }, [showReactionPicker])
+  }, [messageMenu])
 
   // ── Computed values ────────────────────────────────────────────────────────
   const activeConv = useMemo(() => convs.find(c => c.id === activeConvId) || null, [convs, activeConvId])
   const activeMsgs = msgsByConv[activeConvId] || []
+  const activeMsgMap = useMemo(() => Object.fromEntries(activeMsgs.map(msg => [String(msg.id), msg])), [activeMsgs])
   const otherMember = useMemo(() => activeConv?.members?.find(m => m.user_id !== me?.id) || null, [activeConv, me?.id])
   const convTitle = useMemo(() => activeConv?.type === 'group' ? (activeConv.name || 'Group') : (otherMember?.display_name || '…'), [activeConv, otherMember])
   const otherPresence = otherMember ? presenceMap[otherMember.user_id] : null
+
+  const latestCallByConv = useMemo(() => {
+    const next = {}
+    for (const call of callsFeed) {
+      const current = next[call.conversation_id]
+      if (!current || new Date(call.started_at) > new Date(current.started_at)) next[call.conversation_id] = call
+    }
+    return next
+  }, [callsFeed])
 
   const filteredConvs = useMemo(() =>
     convs.filter(c => {
@@ -870,12 +914,69 @@ export default function App() {
     }
   }, [api, openConversation, showToast, startCall])
 
+  const copyMessage = useCallback(async (msg) => {
+    const text = msg.content || msg.media_url || ''
+    if (!text) {
+      showToast('Nothing to copy', 'error')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+      showToast('Copied')
+    } catch {
+      showToast('Copy failed', 'error')
+    }
+  }, [showToast])
+
+  const promptReply = useCallback((msg) => {
+    setReplyTarget(msg)
+    setMessageMenu(null)
+  }, [])
+
+  const openMessageMenu = useCallback((event, msgId) => {
+    event.preventDefault()
+    setMessageMenu({ msgId, x: event.clientX, y: event.clientY })
+  }, [])
+
+  const callMeta = useCallback((call) => {
+    const outgoing = call.caller_id === me?.id
+    const missed = call.status === 'missed' || call.status === 'rejected'
+    const durationSeconds = Number(call.duration_seconds || 0)
+    const timeLabel = fmtTime(call.started_at)
+    if (missed) {
+      return {
+        align: outgoing ? 'mine' : 'theirs',
+        directionLabel: outgoing ? 'Missed outgoing call' : 'Missed incoming call',
+        icon: 'missed',
+        durationLabel: null,
+        timeLabel,
+      }
+    }
+    return {
+      align: outgoing ? 'mine' : 'theirs',
+      directionLabel: outgoing ? 'Outgoing call' : 'Incoming call',
+      icon: outgoing ? 'outgoing' : 'incoming',
+      durationLabel: durationSeconds > 0 ? fmtDuration(durationSeconds) : null,
+      timeLabel,
+    }
+  }, [fmtTime, fmtDuration, me?.id])
+
+  const activeTimeline = useMemo(() => {
+    const messageItems = activeMsgs.map(msg => ({ kind: 'message', id: `msg-${msg.id}`, created_at: msg.created_at, msg }))
+    const callItems = callsFeed
+      .filter(call => call.conversation_id === activeConvId)
+      .map(call => ({ kind: 'call', id: `call-${call.id}`, created_at: call.started_at, call }))
+    return [...messageItems, ...callItems].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+  }, [activeConvId, activeMsgs, callsFeed])
+
   // ── Render helpers ─────────────────────────────────────────────────────────
   const renderMessage = (msg, idx) => {
     const mine = msg.sender_id === me?.id
-    const prev = activeMsgs[idx - 1]
-    const showDate = !prev || fmtDate(prev.created_at) !== fmtDate(msg.created_at)
+    const prev = activeTimeline[idx - 1]
+    const prevCreatedAt = prev ? (prev.kind === 'message' ? prev.msg.created_at : prev.call.started_at) : null
+    const showDate = !prevCreatedAt || fmtDate(prevCreatedAt) !== fmtDate(msg.created_at)
     const isOpt = String(msg.id).startsWith('tmp-')
+    const repliedMsg = msg.reply_to_id ? activeMsgMap[String(msg.reply_to_id)] : null
 
     let body
     if (msg.deleted_at) {
@@ -914,17 +1015,18 @@ export default function App() {
         <div className={`msg-row ${mine ? 'mine' : 'theirs'} ${isOpt ? 'optimistic' : ''}`}>
           <div
             className="msg-bubble-wrap"
-            onContextMenu={e => { e.preventDefault(); setReactionPickerPos({ x: e.clientX, y: e.clientY }); setShowReactionPicker(msg.id) }}
+            onContextMenu={e => openMessageMenu(e, msg.id)}
+            onDoubleClick={() => promptReply(msg)}
           >
             {senderName && <div className="msg-sender">{senderName}</div>}
             <div className="msg-bubble">
+              {repliedMsg && (
+                <button className="msg-reply-ref" onClick={() => setReplyTarget(repliedMsg)}>
+                  <span className="msg-reply-label">Replying to</span>
+                  <span className="msg-reply-snippet">{repliedMsg.content || repliedMsg.type || 'Attachment'}</span>
+                </button>
+              )}
               {body}
-              {mine && !msg.deleted_at && (
-                <button className="msg-delete-btn" onClick={() => deleteMessage(msg.id)} title="Delete">×</button>
-              )}
-              {!msg.deleted_at && (
-                <button className="msg-pin-btn" onClick={() => pinMessage(msg.id)} title="Pin">📌</button>
-              )}
             </div>
             {reactions && (
               <div className="msg-reactions">
@@ -937,6 +1039,33 @@ export default function App() {
             )}
           </div>
           <div className="msg-time">{fmtTime(msg.created_at)}{mine && (isOpt ? ' ·' : ' ✓')}</div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderCallBubble = (call, idx) => {
+    const meta = callMeta(call)
+    const prev = activeTimeline[idx - 1]
+    const prevCreatedAt = prev ? (prev.kind === 'message' ? prev.msg.created_at : prev.call.started_at) : null
+    const showDate = !prevCreatedAt || fmtDate(prevCreatedAt) !== fmtDate(call.started_at)
+    const IconComp = meta.icon === 'missed' ? MissedCallIcon : meta.icon === 'incoming' ? IncomingCallIcon : OutgoingCallIcon
+    const peer = callPeerName(call)
+
+    return (
+      <div key={`call-${call.id}`}>
+        {showDate && <div className="date-pill">{fmtDate(call.started_at)}</div>}
+        <div className={`msg-row ${meta.align}`}>
+          <button className="call-bubble" onClick={() => setRedialPrompt({ peerId: peer.peerId, peerName: peer.name, call })}>
+            <div className={`call-bubble-icon ${meta.icon}`}><IconComp /></div>
+            <div className="call-bubble-copy">
+              <div className="call-bubble-title">{meta.directionLabel}</div>
+              <div className="call-bubble-sub">
+                {meta.timeLabel}
+                {meta.durationLabel ? ` · ${meta.durationLabel}` : ''}
+              </div>
+            </div>
+          </button>
         </div>
       </div>
     )
@@ -1014,7 +1143,14 @@ export default function App() {
               const name = isGroup ? (c.name || 'Group') : (other?.display_name || '…')
               const presence = other ? presenceMap[other.user_id] : null
               const lastMsg = c.last_message
-              const preview = lastMsg?.deleted_at ? 'Deleted' : lastMsg?.type !== 'text' ? `${lastMsg?.type || 'Attachment'}` : (lastMsg?.content || '')
+              const latestCall = latestCallByConv[c.id]
+              const lastMsgAt = lastMsg?.created_at ? new Date(lastMsg.created_at) : null
+              const latestCallAt = latestCall?.started_at ? new Date(latestCall.started_at) : null
+              const useCallPreview = latestCallAt && (!lastMsgAt || latestCallAt > lastMsgAt)
+              const preview = useCallPreview
+                ? `${latestCall.caller_id === me?.id ? 'Outgoing' : 'Incoming'} call${latestCall.duration_seconds ? ` · ${fmtDuration(latestCall.duration_seconds)}` : ''}`
+                : lastMsg?.deleted_at ? 'Deleted' : lastMsg?.type !== 'text' ? `${lastMsg?.type || 'Attachment'}` : (lastMsg?.content || '')
+              const previewTime = useCallPreview ? latestCall.started_at : lastMsg?.created_at
               return (
                 <button key={c.id} className={`conv-item ${activeConvId === c.id ? 'active' : ''}`}
                   onClick={() => openConversation(c.id)}>
@@ -1025,7 +1161,7 @@ export default function App() {
                   <div className="conv-body">
                     <div className="conv-name-row">
                       <span className="conv-name">{name}</span>
-                      <span className="conv-time">{fmtTime(lastMsg?.created_at)}</span>
+                      <span className="conv-time">{fmtTime(previewTime)}</span>
                     </div>
                     <div className="conv-preview-row">
                       <span className="conv-preview">{preview}</span>
@@ -1258,12 +1394,21 @@ export default function App() {
 
               <div className="messages-area">
                 <div className="messages-stack">
-                  {activeMsgs.map((msg, i) => renderMessage(msg, i))}
+                  {activeTimeline.map((item, i) => item.kind === 'message' ? renderMessage(item.msg, i) : renderCallBubble(item.call, i))}
                   <div ref={messagesEndRef} />
                 </div>
               </div>
 
               <div className="chat-input-area">
+                {replyTarget && (
+                  <div className="reply-composer-bar">
+                    <div className="reply-composer-copy">
+                      <span className="reply-composer-label">Replying to</span>
+                      <span className="reply-composer-snippet">{replyTarget.content || replyTarget.type || 'Attachment'}</span>
+                    </div>
+                    <button className="reply-composer-close" onClick={() => setReplyTarget(null)}><CloseIcon /></button>
+                  </div>
+                )}
                 {composerMode === 'poll' && (
                   <div className="poll-composer">
                     <input className="poll-q-input" value={pollQ} onChange={e => setPollQ(e.target.value)} placeholder="Poll question…" />
@@ -1380,12 +1525,40 @@ export default function App() {
         </main>
       )}
 
-      {/* ── Reaction picker popup ── */}
-      {workspace === 'chats' && showReactionPicker && (
-        <div className="reaction-picker-popup" style={{ left: reactionPickerPos.x, top: reactionPickerPos.y }}>
-          {QUICK_EMOJIS.map(e => (
-            <button key={e} onClick={() => reactToMessage(showReactionPicker, e)}>{e}</button>
-          ))}
+      {workspace === 'chats' && messageMenu && (
+        <div className="message-menu-popup" style={{ left: messageMenu.x, top: messageMenu.y }}>
+          <div className="message-menu-section reactions">
+            {QUICK_EMOJIS.map(e => (
+              <button key={e} onClick={() => reactToMessage(messageMenu.msgId, e)}>{e}</button>
+            ))}
+          </div>
+          <div className="message-menu-section actions">
+            {(() => {
+              const msg = activeMsgMap[String(messageMenu.msgId)]
+              if (!msg) return null
+              return (
+                <>
+                  <button onClick={() => promptReply(msg)}><ReplyIcon /> Reply</button>
+                  <button onClick={() => { copyMessage(msg); setMessageMenu(null) }}><CopyIcon /> Copy</button>
+                  <button onClick={() => { pinMessage(msg.id); setMessageMenu(null) }}><PinActionIcon /> Pin</button>
+                  <button onClick={() => { deleteMessage(msg.id); setMessageMenu(null) }} className="danger"><DeleteIcon /> Delete</button>
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
+      {redialPrompt && (
+        <div className="confirm-overlay" onClick={() => setRedialPrompt(null)}>
+          <div className="confirm-card" onClick={e => e.stopPropagation()}>
+            <div className="confirm-title">Call again?</div>
+            <div className="confirm-copy">Redial {redialPrompt.peerName} from this call event.</div>
+            <div className="confirm-actions">
+              <button className="confirm-btn ghost" onClick={() => setRedialPrompt(null)}>Cancel</button>
+              <button className="confirm-btn" onClick={() => { callBackUser(redialPrompt.peerId); setRedialPrompt(null) }}>Call</button>
+            </div>
+          </div>
         </div>
       )}
 

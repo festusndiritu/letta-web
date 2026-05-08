@@ -123,3 +123,27 @@ export function StoryRing({ count, viewedCount, size = 50 }) {
     </svg>
   )
 }
+
+export function ReplyIcon() {
+  return <Icon><path d="M10 8 5 12l5 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M6 12h7a5 5 0 0 1 5 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
+}
+
+export function CopyIcon() {
+  return <Icon><rect x="9" y="9" width="10" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.7" /><rect x="5" y="5" width="10" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.7" /></Icon>
+}
+
+export function PinActionIcon() {
+  return <Icon><path d="M9 5h6l-1.4 4.2 2.4 2.3v1H8v-1l2.4-2.3L9 5zM12 12.5V19" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></Icon>
+}
+
+export function OutgoingCallIcon() {
+  return <Icon><path d="M8 16 16 8M10 8h6v6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></Icon>
+}
+
+export function IncomingCallIcon() {
+  return <Icon><path d="M16 8 8 16M8 10v6h6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></Icon>
+}
+
+export function MissedCallIcon() {
+  return <Icon><path d="M8 8l8 8M16 8 8 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M8 12h8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></Icon>
+}
